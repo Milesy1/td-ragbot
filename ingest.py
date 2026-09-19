@@ -1,7 +1,12 @@
 # Stage 4: ingest - walks a real folder of markdown docs, chunks by
 # header, embeds via Hugging Face Inference API, and stores into
 # Qdrant Cloud (falls back to local Qdrant if no cloud URL is set).
+# Uses stable, deterministic point IDs (hash of source path + chunk
+# index) rather than a per-run counter, so ingesting multiple folders
+# never collides/overwrites - and re-running the same folder updates
+# existing points instead of duplicating them.
 # Pipeline order: document.py -> chunk_text.py -> embed.py -> ingest.py -> retrieval.py
+import hashlib
 import os
 from pathlib import Path
 
@@ -26,6 +31,22 @@ if not client.collection_exists(COLLECTION_NAME):
     )
 
 
+def stable_point_id(source: str, chunk_index: int) -> int:
+    """
+    Generate a deterministic point ID from a source path + chunk index,
+    so the same chunk always maps to the same Qdrant point ID across
+    runs - re-ingesting a folder updates existing points rather than
+    duplicating them, and ingesting a DIFFERENT folder never collides
+    with IDs already used by another folder (unlike a simple counter
+    that restarts at 0 every run).
+    """
+    key = f"{source}:{chunk_index}"
+    digest = hashlib.md5(key.encode("utf-8")).hexdigest()
+    # Qdrant point IDs must be unsigned 64-bit ints or UUIDs - take the
+    # first 16 hex chars (64 bits) of the hash.
+    return int(digest[:16], 16)
+
+
 def ingest_folder(folder_path: str) -> None:
     """
     Ingest all supported documents from a folder into the vector database.
@@ -37,17 +58,21 @@ def ingest_folder(folder_path: str) -> None:
     The document category is derived from the file's parent folder.
     """
     folder = Path(folder_path)
-    # One running counter for the whole ingest run, so every chunk
-    # across every file/section gets a unique Qdrant point id.
-    point_id = 0
+    chunk_count = 0
 
     for file_path in folder.rglob("*.md"):
         text = file_path.read_text(encoding="utf-8")
         doc_category = file_path.parent.name
+        source = str(file_path)
 
         # split_by_headers returns (header_title, section_text) tuples -
         # unpack both directly in the loop
         sections = split_by_headers(text)
+
+        # chunk_index counts every chunk within THIS FILE (across all its
+        # sections), so stable_point_id(source, chunk_index) is unique
+        # per file regardless of how many sections/chunks it has.
+        chunk_index = 0
 
         for header_title, section_text in sections:
             # chunk_section needs chunk_size and overlap - not just text
@@ -56,7 +81,7 @@ def ingest_folder(folder_path: str) -> None:
             for chunk in chunks:
                 document = Document(
                     content=chunk,
-                    source=str(file_path),
+                    source=source,
                     header_title=header_title,
                     doc_category=doc_category
                 )
@@ -67,7 +92,7 @@ def ingest_folder(folder_path: str) -> None:
                     collection_name=COLLECTION_NAME,
                     points=[
                         PointStruct(
-                            id=point_id,
+                            id=stable_point_id(source, chunk_index),
                             vector=vector,
                             payload={
                                 "content": document.content,
@@ -78,9 +103,10 @@ def ingest_folder(folder_path: str) -> None:
                         )
                     ]
                 )
-                point_id += 1
+                chunk_index += 1
+                chunk_count += 1
 
-    print(f"Ingested {point_id} chunks into '{COLLECTION_NAME}'")
+    print(f"Ingested {chunk_count} chunks into '{COLLECTION_NAME}'")
 
 
 if __name__ == "__main__":
