@@ -4,6 +4,7 @@
 # since Groq is a hosted API, not a local model server.
 import json
 import os
+import traceback
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -87,6 +88,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
         try:
             context, sources = build_context_and_sources(request.query, request.top_k)
         except Exception as e:
+            print(f"[chat_stream] retrieval error: {e}\n{traceback.format_exc()}")
             yield f"data: {json.dumps({'type': 'error', 'text': f'Retrieval failed: {e}'})}\n\n"
             return
 
@@ -98,6 +100,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
+        delta_count = 0
         try:
             stream = llm_client.chat.completions.create(
                 model=GROQ_MODEL,
@@ -110,13 +113,33 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
             for chunk in stream:
                 delta = chunk.choices[0].delta.content
                 if delta:
+                    delta_count += 1
                     yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+
+            if delta_count == 0:
+                # Groq returned a stream with zero content deltas - surface
+                # this clearly instead of silently finishing with no text.
+                print("[chat_stream] Groq stream completed with zero content deltas")
+                yield f"data: {json.dumps({'type': 'error', 'text': 'The model returned an empty response. Please try again.'})}\n\n"
+
         except Exception as e:
+            print(f"[chat_stream] generation error: {e}\n{traceback.format_exc()}")
             yield f"data: {json.dumps({'type': 'error', 'text': f'Generation failed: {e}'})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            # Prevent Render's/any intermediary proxy from buffering the
+            # stream, which can otherwise deliver everything at once (or
+            # drop it) instead of true incremental streaming.
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 if __name__ == "__main__":
