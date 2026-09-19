@@ -56,9 +56,14 @@ def ingest_folder(folder_path: str) -> None:
     store the results in the vector database.
 
     The document category is derived from the file's parent folder.
+    Chunks that are empty or whitespace-only after chunking (e.g. a
+    section that's just blank lines) are skipped rather than raising -
+    embed_text() correctly rejects them, but one bad chunk shouldn't
+    crash an otherwise-successful multi-hundred-chunk ingestion run.
     """
     folder = Path(folder_path)
     chunk_count = 0
+    skipped_count = 0
 
     for file_path in folder.rglob("*.md"):
         text = file_path.read_text(encoding="utf-8")
@@ -79,6 +84,11 @@ def ingest_folder(folder_path: str) -> None:
             chunks = chunk_section(section_text, chunk_size=500, overlap=50)
 
             for chunk in chunks:
+                if not chunk.strip():
+                    skipped_count += 1
+                    chunk_index += 1
+                    continue
+
                 document = Document(
                     content=chunk,
                     source=source,
@@ -106,7 +116,7 @@ def ingest_folder(folder_path: str) -> None:
                 chunk_index += 1
                 chunk_count += 1
 
-    print(f"Ingested {chunk_count} chunks into '{COLLECTION_NAME}'")
+    print(f"Ingested {chunk_count} chunks into '{COLLECTION_NAME}' ({skipped_count} empty chunks skipped)")
 
 
 if __name__ == "__main__":
