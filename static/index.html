@@ -86,7 +86,13 @@
     background: var(--panel);
     z-index: 10;
   }
-  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer; background: none; border: none; padding: 0;
+    font-family: inherit; text-align: left; color: inherit;
+    border-radius: 10px; transition: opacity 0.15s;
+  }
+  .brand:hover { opacity: 0.8; }
   .logo {
     width: 32px; height: 32px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
@@ -263,7 +269,7 @@
 <body>
 
 <header>
-  <div class="brand">
+  <button class="brand" id="home-btn" title="Back to start" aria-label="Go to home">
     <div class="logo">
       <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -288,7 +294,7 @@
       <h1>TD RagBot</h1>
       <div class="sub">TouchDesigner docs · answered anywhere</div>
     </div>
-  </div>
+  </button>
   <div class="header-right">
     <div class="status"><span class="pulse"></span>llama-3.1 · cloud</div>
     <button id="theme-toggle" title="Toggle light/dark theme" aria-label="Toggle theme">
@@ -380,13 +386,65 @@ marked.setOptions({
 });
 
 const chat = document.getElementById("chat");
-const emptyState = document.getElementById("empty-state");
+let emptyState = document.getElementById("empty-state");
 const queryInput = document.getElementById("query");
 const sendBtn = document.getElementById("send");
 
+const EMPTY_STATE_HTML = `
+  <div class="big-logo">
+    <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="logoGradBig2" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="var(--logo-1)"/>
+          <stop offset="100%" stop-color="var(--logo-2)"/>
+        </linearGradient>
+      </defs>
+      <line x1="10" y1="30" x2="20" y2="12" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.7"/>
+      <line x1="20" y1="12" x2="31" y2="18" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.7"/>
+      <line x1="20" y1="12" x2="14" y2="8" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.5"/>
+      <line x1="10" y1="30" x2="24" y2="33" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.5"/>
+      <line x1="31" y1="18" x2="24" y2="33" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.6"/>
+      <circle cx="20" cy="12" r="4" fill="url(#logoGradBig2)"/>
+      <circle cx="10" cy="30" r="3" fill="url(#logoGradBig2)" opacity="0.85"/>
+      <circle cx="31" cy="18" r="3.2" fill="url(#logoGradBig2)" opacity="0.9"/>
+      <circle cx="14" cy="8" r="1.8" fill="url(#logoGradBig2)" opacity="0.6"/>
+      <circle cx="24" cy="33" r="2.2" fill="url(#logoGradBig2)" opacity="0.7"/>
+    </svg>
+  </div>
+  <h2>Ask about TouchDesigner</h2>
+  Hybrid retrieval over the real docs, grounded generation via Groq. Ask from anywhere.
+  <div class="suggestions">
+    <div class="suggestion-chip" data-q="How do I navigate the network editor?">Navigate the network editor</div>
+    <div class="suggestion-chip" data-q="What is the OP Create Dialog?">OP Create Dialog</div>
+    <div class="suggestion-chip" data-q="How do I set preferences?">Set preferences</div>
+  </div>
+`;
+
+function bindSuggestionChips() {
+  document.querySelectorAll(".suggestion-chip").forEach(chip => {
+    chip.addEventListener("click", () => sendQuery(chip.dataset.q));
+  });
+}
+
 function clearEmptyState() {
   if (emptyState && emptyState.parentNode) emptyState.remove();
+  emptyState = null;
 }
+
+function goHome() {
+  chat.innerHTML = "";
+  const div = document.createElement("div");
+  div.className = "empty-state";
+  div.id = "empty-state";
+  div.innerHTML = EMPTY_STATE_HTML;
+  chat.appendChild(div);
+  emptyState = div;
+  bindSuggestionChips();
+  queryInput.value = "";
+  queryInput.focus();
+}
+
+document.getElementById("home-btn").addEventListener("click", goHome);
 
 function addUserMessage(text) {
   clearEmptyState();
@@ -490,9 +548,7 @@ async function sendQuery(text) {
 
 sendBtn.addEventListener("click", () => sendQuery());
 queryInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendQuery(); });
-document.querySelectorAll(".suggestion-chip").forEach(chip => {
-  chip.addEventListener("click", () => sendQuery(chip.dataset.q));
-});
+bindSuggestionChips();
 </script>
 
 </body>
