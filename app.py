@@ -28,7 +28,10 @@ llm_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=GROQ_API_
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 COLLECTION_NAME = "touchdesigner_docs"
-EMBEDDING_MODEL_LABEL = "all-MiniLM-L6-v2 · 384d"
+# ASCII-only label deliberately (no Unicode middle-dot) - avoids
+# encoding mismatches between this file's saved encoding and Render's
+# runtime that previously corrupted a "-" character into "Â·".
+EMBEDDING_MODEL_LABEL = "all-MiniLM-L6-v2 (384d)"
 stats_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 STATIC_DIR = Path(__file__).parent / "static"
