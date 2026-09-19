@@ -1,7 +1,9 @@
 # Stage 9: app - FastAPI backend serving the chat UI. Wires
 # hybrid_search() (retrieval) + Groq-hosted llama-3.1 (generation,
 # streamed) together into a real RAG endpoint, deployable on Render
-# since Groq is a hosted API, not a local model server.
+# since Groq is a hosted API, not a local model server. Supports
+# multi-turn conversation - the client sends the full message history,
+# retrieval uses only the latest question.
 import json
 import os
 import traceback
@@ -25,10 +27,20 @@ llm_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=GROQ_API_
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# Cap how much history gets sent to the model per request, so cost/latency
+# don't grow unbounded as a conversation gets long.
+MAX_HISTORY_MESSAGES = 10
+
+
+class Message(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
 
 class ChatRequest(BaseModel):
     query: str
     top_k: int = 5
+    history: list[Message] = []
 
 
 def build_context_and_sources(query: str, top_k: int) -> tuple[str, list[dict]]:
@@ -59,7 +71,9 @@ SYSTEM_PROMPT_TEMPLATE = (
     "question using ONLY the provided context below. Use Markdown "
     "formatting (headers, bullet points, fenced code blocks for any "
     "TouchDesigner Python/expression syntax). If the context doesn't "
-    "contain the answer, say so plainly rather than guessing.\n\n"
+    "contain the answer, say so plainly rather than guessing. The "
+    "conversation history is provided so you can understand follow-up "
+    "questions that refer back to earlier messages.\n\n"
     "Context:\n{context}"
 )
 
@@ -74,6 +88,11 @@ def serve_ui() -> FileResponse:
 def chat_stream(request: ChatRequest) -> StreamingResponse:
     """
     Stream a RAG answer token-by-token as Server-Sent Events.
+
+    Retrieval uses only the latest question (request.query) - what to
+    search for doesn't depend on prior turns. Generation uses the full
+    conversation history (request.history) so follow-up questions that
+    refer back to earlier turns ("what about for a COMP?") are understood.
 
     First event carries the retrieved sources (so the UI can show them
     immediately), followed by a stream of text-delta events as the LLM
@@ -100,14 +119,20 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
+        # Build the message list: system prompt (with fresh retrieval
+        # context) + capped prior history + the new question. The prior
+        # history is capped to avoid unbounded cost/latency growth as a
+        # conversation gets long.
+        capped_history = request.history[-MAX_HISTORY_MESSAGES:]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(context=context)}]
+        messages.extend({"role": m.role, "content": m.content} for m in capped_history)
+        messages.append({"role": "user", "content": request.query})
+
         delta_count = 0
         try:
             stream = llm_client.chat.completions.create(
                 model=GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(context=context)},
-                    {"role": "user", "content": request.query},
-                ],
+                messages=messages,
                 stream=True,
             )
             for chunk in stream:
