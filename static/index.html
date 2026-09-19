@@ -36,6 +36,8 @@
     --logo-1: #5aa9ff;
     --logo-2: #8ee3ff;
     --logo-glow: rgba(90, 169, 255, 0.45);
+    --error: #ff5c5c;
+    --error-bg: rgba(255, 92, 92, 0.1);
   }
   :root[data-theme="light"] {
     --bg: #f5f6f8;
@@ -60,6 +62,8 @@
     --logo-1: #2f7fe0;
     --logo-2: #4fc7e8;
     --logo-glow: rgba(47, 127, 224, 0.3);
+    --error: #d43c3c;
+    --error-bg: rgba(212, 60, 60, 0.08);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { height: 100%; }
@@ -78,6 +82,13 @@
     transition: background-color 0.2s, color 0.2s;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  a, button, input, [tabindex] {
+    outline-offset: 2px;
+  }
+  a:focus-visible, button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   header {
     padding: 16px 28px;
@@ -121,6 +132,9 @@
     animation: pulse 2s infinite;
   }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  @media (prefers-reduced-motion: reduce) {
+    .status .pulse { animation: none; }
+  }
 
   #theme-toggle {
     display: flex; align-items: center; justify-content: center;
@@ -153,6 +167,9 @@
     animation: rise 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
   @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .msg { animation: none; }
+  }
   .msg.user { align-self: flex-end; align-items: flex-end; }
   .msg.bot { align-self: flex-start; align-items: flex-start; width: 100%; }
   .bubble {
@@ -164,6 +181,7 @@
     word-break: break-word;
   }
   .msg.user .bubble { background: var(--user-bubble); border-bottom-right-radius: 5px; }
+  .msg.user.failed .bubble { opacity: 0.6; border: 1px dashed var(--error); }
   .msg.bot .bubble {
     background: var(--bot-bubble);
     border: 1px solid var(--border-soft);
@@ -214,6 +232,33 @@
     animation: blink 0.9s steps(1) infinite;
   }
   @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor-blink { animation: none; }
+  }
+
+  .error-box {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--error-bg);
+    border: 1px solid var(--error);
+    color: var(--error);
+    padding: 12px 15px;
+    border-radius: var(--radius);
+    font-size: 13.5px;
+    width: 100%;
+  }
+  .error-box .retry-btn {
+    background: var(--error);
+    color: #fff;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.15s;
+  }
+  .error-box .retry-btn:hover { opacity: 0.85; }
 
   .sources {
     display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; width: 100%;
@@ -240,6 +285,13 @@
   .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
   .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
   @keyframes bounce { 0%,60%,100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-5px); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .typing-dots span { animation: none; opacity: 0.7; }
+  }
+  .status-text {
+    font-size: 13px; color: var(--text-dim); padding: 2px 2px 6px;
+    display: flex; align-items: center; gap: 8px;
+  }
 
   #input-bar { padding: 10px 28px 24px; flex-shrink: 0; }
   #input-row {
@@ -271,6 +323,9 @@
   #send:disabled { opacity: 0.35; cursor: default; }
   #send:not(:disabled):hover { transform: translateY(-1px); }
   #send:not(:disabled):active { transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    #send:not(:disabled):hover { transform: none; }
+  }
 
   .empty-state {
     color: var(--text-dim); text-align: center; margin: auto;
@@ -290,6 +345,15 @@
     cursor: pointer; transition: all 0.15s; color: var(--text-dim);
   }
   .suggestion-chip:hover { border-color: var(--accent-glow); color: var(--text); transform: translateY(-1px); }
+  @media (prefers-reduced-motion: reduce) {
+    .suggestion-chip:hover { transform: none; }
+  }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
 
   ::-webkit-scrollbar { width: 9px; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
@@ -327,8 +391,8 @@
 <body>
 
 <header>
-  <button class="brand" id="home-btn" title="Back to start" aria-label="Go to home">
-    <div class="logo">
+  <button class="brand" id="home-btn" title="Back to start" aria-label="Go to home, clear conversation">
+    <div class="logo" aria-hidden="true">
       <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
@@ -354,17 +418,17 @@
     </div>
   </button>
   <div class="header-right">
-    <div class="status"><span class="pulse"></span><span>gpt-oss-20b · cloud</span></div>
-    <button id="theme-toggle" title="Toggle light/dark theme" aria-label="Toggle theme">
-      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+    <div class="status"><span class="pulse" aria-hidden="true"></span><span>gpt-oss-20b · cloud</span></div>
+    <button id="theme-toggle" title="Toggle light/dark theme" aria-label="Toggle light and dark theme" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
     </button>
   </div>
 </header>
 
-<div id="chat">
+<div id="chat" role="log" aria-live="polite" aria-label="Conversation">
   <div class="empty-state" id="empty-state">
-    <div class="big-logo">
+    <div class="big-logo" aria-hidden="true">
       <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="logoGradBig" x1="0" y1="0" x2="1" y2="1">
@@ -387,18 +451,19 @@
     <h2>Ask about TouchDesigner</h2>
     Hybrid retrieval over the real docs, grounded generation via Groq. Ask from anywhere.
     <div class="suggestions">
-      <div class="suggestion-chip" data-q="How do I navigate the network editor?">Navigate the network editor</div>
-      <div class="suggestion-chip" data-q="What is the OP Create Dialog?">OP Create Dialog</div>
-      <div class="suggestion-chip" data-q="How do I set preferences?">Set preferences</div>
+      <button class="suggestion-chip" data-q="How do I navigate the network editor?">Navigate the network editor</button>
+      <button class="suggestion-chip" data-q="What is the OP Create Dialog?">OP Create Dialog</button>
+      <button class="suggestion-chip" data-q="How do I set preferences?">Set preferences</button>
     </div>
   </div>
 </div>
 
 <div id="input-bar">
-  <div id="input-row">
-    <input id="query" type="text" placeholder="Ask about TouchDesigner..." autofocus autocomplete="off" />
-    <button id="send">Send</button>
-  </div>
+  <form id="input-row" role="search">
+    <label for="query" class="sr-only">Ask a question about TouchDesigner</label>
+    <input id="query" type="text" placeholder="Ask about TouchDesigner... (Ctrl+K to focus)" autofocus autocomplete="off" />
+    <button id="send" type="submit">Send</button>
+  </form>
 </div>
 
 <script>
@@ -407,16 +472,19 @@ const THEME_KEY = "td-ragbot-theme";
 const root = document.documentElement;
 const hljsDark = document.getElementById("hljs-dark-theme");
 const hljsLight = document.getElementById("hljs-light-theme");
+const themeToggle = document.getElementById("theme-toggle");
 
 function applyTheme(theme) {
   if (theme === "light") {
     root.setAttribute("data-theme", "light");
     hljsDark.disabled = true;
     hljsLight.disabled = false;
+    themeToggle.setAttribute("aria-pressed", "true");
   } else {
     root.removeAttribute("data-theme");
     hljsDark.disabled = false;
     hljsLight.disabled = true;
+    themeToggle.setAttribute("aria-pressed", "false");
   }
 }
 
@@ -426,7 +494,7 @@ try {
 } catch (e) { /* localStorage unavailable - default to dark */ }
 applyTheme(savedTheme);
 
-document.getElementById("theme-toggle").addEventListener("click", () => {
+themeToggle.addEventListener("click", () => {
   const current = root.getAttribute("data-theme") === "light" ? "light" : "dark";
   const next = current === "light" ? "dark" : "light";
   applyTheme(next);
@@ -447,9 +515,10 @@ const chat = document.getElementById("chat");
 let emptyState = document.getElementById("empty-state");
 const queryInput = document.getElementById("query");
 const sendBtn = document.getElementById("send");
+const inputForm = document.getElementById("input-row");
 
 const EMPTY_STATE_HTML = `
-  <div class="big-logo">
+  <div class="big-logo" aria-hidden="true">
     <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="logoGradBig2" x1="0" y1="0" x2="1" y2="1">
@@ -472,9 +541,9 @@ const EMPTY_STATE_HTML = `
   <h2>Ask about TouchDesigner</h2>
   Hybrid retrieval over the real docs, grounded generation via Groq. Ask from anywhere.
   <div class="suggestions">
-    <div class="suggestion-chip" data-q="How do I navigate the network editor?">Navigate the network editor</div>
-    <div class="suggestion-chip" data-q="What is the OP Create Dialog?">OP Create Dialog</div>
-    <div class="suggestion-chip" data-q="How do I set preferences?">Set preferences</div>
+    <button class="suggestion-chip" data-q="How do I navigate the network editor?">Navigate the network editor</button>
+    <button class="suggestion-chip" data-q="What is the OP Create Dialog?">OP Create Dialog</button>
+    <button class="suggestion-chip" data-q="How do I set preferences?">Set preferences</button>
   </div>
 `;
 
@@ -512,13 +581,14 @@ function addUserMessage(text) {
   msg.querySelector(".bubble").textContent = text;
   chat.appendChild(msg);
   chat.scrollTop = chat.scrollHeight;
+  return msg;
 }
 
 function addBotMessage() {
   clearEmptyState();
   const msg = document.createElement("div");
   msg.className = "msg bot";
-  msg.innerHTML = `<div class="bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>`;
+  msg.innerHTML = `<div class="bubble"><div class="typing-dots" role="status" aria-label="Retrieving relevant documentation"><span></span><span></span><span></span></div></div>`;
   chat.appendChild(msg);
   chat.scrollTop = chat.scrollHeight;
   return msg;
@@ -538,11 +608,39 @@ function renderSources(msgEl, sources) {
   msgEl.appendChild(wrap);
 }
 
+function showRetryableError(userMsgEl, botMsgEl, query) {
+  // Rollback UI: mark the optimistically-shown user message as failed,
+  // remove the empty bot placeholder, and offer a one-click retry
+  // instead of forcing the user to retype the question.
+  userMsgEl.classList.add("failed");
+  botMsgEl.remove();
+
+  const errMsg = document.createElement("div");
+  errMsg.className = "msg bot";
+  errMsg.innerHTML = `
+    <div class="error-box" role="alert">
+      <span>Couldn't reach the server. Check your connection and try again.</span>
+      <button class="retry-btn" type="button">Retry</button>
+    </div>
+  `;
+  errMsg.querySelector(".retry-btn").addEventListener("click", () => {
+    userMsgEl.remove();
+    errMsg.remove();
+    sendQuery(query);
+  });
+  chat.appendChild(errMsg);
+  chat.scrollTop = chat.scrollHeight;
+}
+
 async function sendQuery(text) {
   const query = (text !== undefined ? text : queryInput.value).trim();
   if (!query) return;
 
-  addUserMessage(query);
+  // Optimistic UI: the user's message renders immediately, before the
+  // server has responded at all. If the request fails, it's visually
+  // rolled back (dimmed + dashed border) with a retry action, rather
+  // than silently leaving a message that was never actually sent.
+  const userMsg = addUserMessage(query);
   queryInput.value = "";
   sendBtn.disabled = true;
 
@@ -550,6 +648,7 @@ async function sendQuery(text) {
   const bubble = botMsg.querySelector(".bubble");
   let accumulated = "";
   let sourcesRendered = false;
+  let gotAnyResponse = false;
 
   try {
     const res = await fetch("/api/chat/stream", {
@@ -558,6 +657,8 @@ async function sendQuery(text) {
       body: JSON.stringify({ query, top_k: 5 }),
     });
 
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -565,6 +666,7 @@ async function sendQuery(text) {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      gotAnyResponse = true;
       buffer += decoder.decode(value, { stream: true });
 
       const lines = buffer.split("\n\n");
@@ -579,7 +681,7 @@ async function sendQuery(text) {
         } else if (payload.type === "delta") {
           if (accumulated === "") bubble.innerHTML = "";
           accumulated += payload.text;
-          bubble.innerHTML = marked.parse(accumulated) + '<span class="cursor-blink"></span>';
+          bubble.innerHTML = marked.parse(accumulated) + '<span class="cursor-blink" aria-hidden="true"></span>';
           chat.scrollTop = chat.scrollHeight;
         } else if (payload.type === "error") {
           bubble.textContent = payload.text;
@@ -597,16 +699,36 @@ async function sendQuery(text) {
       }
     }
   } catch (err) {
-    bubble.textContent = "Connection error: " + err.message;
+    if (!gotAnyResponse) {
+      // Never even connected - roll back the optimistic message.
+      showRetryableError(userMsg, botMsg, query);
+    } else {
+      // Partial stream then a failure - keep what we have, note the error.
+      bubble.innerHTML += `<div class="error-box" role="alert" style="margin-top:8px">Connection dropped mid-response.</div>`;
+    }
   } finally {
     sendBtn.disabled = false;
     queryInput.focus();
   }
 }
 
-sendBtn.addEventListener("click", () => sendQuery());
-queryInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendQuery(); });
+inputForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  sendQuery();
+});
 bindSuggestionChips();
+
+// --- Keyboard shortcuts ---
+document.addEventListener("keydown", (e) => {
+  const isMod = e.metaKey || e.ctrlKey;
+  if (isMod && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    queryInput.focus();
+    queryInput.select();
+  } else if (e.key === "Escape" && document.activeElement === queryInput) {
+    queryInput.value = "";
+  }
+});
 </script>
 
 </body>
