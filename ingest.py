@@ -1,7 +1,8 @@
 # Stage 4: ingest - walks a real folder of markdown docs, chunks by
-# header, embeds via Ollama, and stores into Qdrant.
+# header, embeds via Hugging Face Inference API, and stores into
+# Qdrant Cloud (falls back to local Qdrant if no cloud URL is set).
 # Pipeline order: document.py -> chunk_text.py -> embed.py -> ingest.py -> retrieval.py
-
+import os
 from pathlib import Path
 
 from chunk_text import split_by_headers, chunk_section
@@ -10,13 +11,18 @@ from embed import embed_text
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, PointStruct
 
+COLLECTION_NAME = "touchdesigner_docs"
+VECTOR_SIZE = 384  # all-MiniLM-L6-v2's output dimension
 
-client = QdrantClient(url="http://localhost:6333")
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")  # None is fine for local Qdrant
 
-if not client.collection_exists("touchdesigner_docs"):
+client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+
+if not client.collection_exists(COLLECTION_NAME):
     client.create_collection(
-        collection_name="touchdesigner_docs",
-        vectors_config=VectorParams(size=768, distance=Distance.COSINE)
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
     )
 
 
@@ -58,7 +64,7 @@ def ingest_folder(folder_path: str) -> None:
                 vector = embed_text(document.content)
 
                 client.upsert(
-                    collection_name="touchdesigner_docs",
+                    collection_name=COLLECTION_NAME,
                     points=[
                         PointStruct(
                             id=point_id,
@@ -74,7 +80,7 @@ def ingest_folder(folder_path: str) -> None:
                 )
                 point_id += 1
 
-    print(f"Ingested {point_id} chunks into 'touchdesigner_docs'")
+    print(f"Ingested {point_id} chunks into '{COLLECTION_NAME}'")
 
 
 if __name__ == "__main__":

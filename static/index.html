@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TD RagBot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<style>
+  :root {
+    --bg: #08090b;
+    --panel: rgba(21, 24, 29, 0.85);
+    --panel-2: #1a1e25;
+    --border: #24282f;
+    --border-soft: #1c2028;
+    --text: #edeef0;
+    --text-dim: #7d8592;
+    --text-dimmer: #565d68;
+    --accent: #ff7a3d;
+    --accent-glow: rgba(255, 122, 61, 0.35);
+    --accent-soft: #4a2f1e;
+    --user-bubble: linear-gradient(135deg, #2c333d, #232830);
+    --bot-bubble: #14171c;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(255, 122, 61, 0.08), transparent),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(120, 130, 255, 0.05), transparent),
+      var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header {
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    backdrop-filter: blur(12px);
+    background: var(--panel);
+    z-index: 10;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: linear-gradient(135deg, var(--accent), #ffb37a);
+    box-shadow: 0 0 20px var(--accent-glow);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px; color: #1a0f05;
+  }
+  header h1 { font-size: 15.5px; font-weight: 600; margin: 0; letter-spacing: -0.1px; }
+  header .sub { color: var(--text-dim); font-size: 12.5px; font-weight: 400; margin-top: 1px; }
+  .status {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 12px; color: var(--text-dim);
+    padding: 6px 12px; border: 1px solid var(--border-soft); border-radius: 999px;
+  }
+  .status .pulse {
+    width: 7px; height: 7px; border-radius: 50%; background: #4ade80;
+    box-shadow: 0 0 8px #4ade80;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 28px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    max-width: 860px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .msg {
+    display: flex; flex-direction: column; gap: 8px; max-width: 82%;
+    animation: rise 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.bot { align-self: flex-start; align-items: flex-start; width: 100%; }
+  .bubble {
+    padding: 13px 17px;
+    border-radius: var(--radius);
+    line-height: 1.6;
+    font-size: 14.5px;
+  }
+  .msg.user .bubble { background: var(--user-bubble); border-bottom-right-radius: 5px; }
+  .msg.bot .bubble {
+    background: var(--bot-bubble);
+    border: 1px solid var(--border-soft);
+    border-bottom-left-radius: 5px;
+    width: 100%;
+  }
+  .bubble p { margin: 0 0 10px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble ul, .bubble ol { margin: 8px 0; padding-left: 22px; }
+  .bubble li { margin: 4px 0; }
+  .bubble code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.8px;
+    background: #23282f;
+    padding: 2px 6px;
+    border-radius: 5px;
+    color: #ffb37a;
+  }
+  .bubble pre {
+    background: #0d0f13 !important;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    margin: 10px 0;
+  }
+  .bubble pre code {
+    background: transparent; padding: 0; color: inherit;
+    font-size: 12.8px; line-height: 1.55;
+  }
+  .bubble h1, .bubble h2, .bubble h3 { font-size: 15px; margin: 14px 0 6px; color: var(--text); }
+  .bubble strong { color: #fff; }
+  .cursor-blink {
+    display: inline-block; width: 7px; height: 15px;
+    background: var(--accent); margin-left: 2px; vertical-align: text-bottom;
+    animation: blink 0.9s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .sources {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; width: 100%;
+  }
+  .source-chip {
+    font-size: 11px; color: var(--text-dim);
+    background: var(--panel-2);
+    border: 1px solid var(--border-soft);
+    padding: 5px 10px; border-radius: 999px; cursor: default;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .source-chip .score { color: var(--accent); font-weight: 600; margin-left: 5px; }
+  .source-chip:hover { border-color: var(--accent-glow); color: var(--text); background: #20242c; }
+
+  .typing-dots { display: flex; gap: 4px; padding: 6px 2px; }
+  .typing-dots span {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--text-dimmer);
+    animation: bounce 1.1s infinite ease-in-out;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes bounce { 0%,60%,100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-5px); opacity: 1; } }
+
+  #input-bar { padding: 10px 28px 24px; }
+  #input-row {
+    max-width: 860px; margin: 0 auto;
+    display: flex; gap: 10px; align-items: center;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 8px 8px 8px 18px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #input-row:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), 0 8px 32px rgba(0,0,0,0.35); }
+  #query {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--text); font-size: 14.5px; padding: 11px 0; font-family: inherit;
+  }
+  #query::placeholder { color: var(--text-dimmer); }
+  #send {
+    background: linear-gradient(135deg, var(--accent), #e8632a);
+    color: #1a0f05; border: none; border-radius: 12px;
+    padding: 11px 20px; font-weight: 600; font-size: 13.5px;
+    cursor: pointer; transition: transform 0.12s, opacity 0.15s;
+    font-family: inherit;
+  }
+  #send:disabled { opacity: 0.35; cursor: default; }
+  #send:not(:disabled):hover { transform: translateY(-1px); }
+  #send:not(:disabled):active { transform: translateY(0); }
+
+  .empty-state {
+    color: var(--text-dim); text-align: center; margin: auto;
+    font-size: 14px; max-width: 420px; line-height: 1.7; padding: 0 20px;
+  }
+  .empty-state .big-logo {
+    width: 52px; height: 52px; margin: 0 auto 18px; border-radius: 16px;
+    background: linear-gradient(135deg, var(--accent), #ffb37a);
+    box-shadow: 0 0 40px var(--accent-glow);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 22px; color: #1a0f05;
+  }
+  .empty-state h2 { color: var(--text); font-size: 18px; margin: 0 0 8px; font-weight: 600; }
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 20px; }
+  .suggestion-chip {
+    font-size: 12.5px; padding: 8px 14px; border-radius: 10px;
+    background: var(--panel-2); border: 1px solid var(--border-soft);
+    cursor: pointer; transition: all 0.15s; color: var(--text-dim);
+  }
+  .suggestion-chip:hover { border-color: var(--accent-glow); color: var(--text); transform: translateY(-1px); }
+
+  ::-webkit-scrollbar { width: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: #313742; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">TD</div>
+    <div>
+      <h1>TD RagBot</h1>
+      <div class="sub">TouchDesigner docs · answered locally</div>
+    </div>
+  </div>
+  <div class="status"><span class="pulse"></span>llama3.1 · local</div>
+</header>
+
+<div id="chat">
+  <div class="empty-state" id="empty-state">
+    <div class="big-logo">TD</div>
+    <h2>Ask about TouchDesigner</h2>
+    Hybrid retrieval over the real docs, grounded generation via a local model. Nothing leaves this machine.
+    <div class="suggestions">
+      <div class="suggestion-chip" data-q="How do I navigate the network editor?">Navigate the network editor</div>
+      <div class="suggestion-chip" data-q="What is the OP Create Dialog?">OP Create Dialog</div>
+      <div class="suggestion-chip" data-q="How do I set preferences?">Set preferences</div>
+    </div>
+  </div>
+</div>
+
+<div id="input-bar">
+  <div id="input-row">
+    <input id="query" type="text" placeholder="Ask about TouchDesigner..." autofocus autocomplete="off" />
+    <button id="send">Send</button>
+  </div>
+</div>
+
+<script>
+marked.setOptions({
+  highlight: function (code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  }
+});
+
+const chat = document.getElementById("chat");
+const emptyState = document.getElementById("empty-state");
+const queryInput = document.getElementById("query");
+const sendBtn = document.getElementById("send");
+
+function clearEmptyState() {
+  if (emptyState && emptyState.parentNode) emptyState.remove();
+}
+
+function addUserMessage(text) {
+  clearEmptyState();
+  const msg = document.createElement("div");
+  msg.className = "msg user";
+  msg.innerHTML = `<div class="bubble"></div>`;
+  msg.querySelector(".bubble").textContent = text;
+  chat.appendChild(msg);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function addBotMessage() {
+  clearEmptyState();
+  const msg = document.createElement("div");
+  msg.className = "msg bot";
+  msg.innerHTML = `<div class="bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>`;
+  chat.appendChild(msg);
+  chat.scrollTop = chat.scrollHeight;
+  return msg;
+}
+
+function renderSources(msgEl, sources) {
+  if (!sources || sources.length === 0) return;
+  const wrap = document.createElement("div");
+  wrap.className = "sources";
+  sources.forEach(s => {
+    const chip = document.createElement("span");
+    chip.className = "source-chip";
+    chip.title = s.source;
+    chip.innerHTML = `${s.header_title} <span style="opacity:0.6">· ${s.doc_category}</span><span class="score">${s.score}</span>`;
+    wrap.appendChild(chip);
+  });
+  msgEl.appendChild(wrap);
+}
+
+async function sendQuery(text) {
+  const query = (text !== undefined ? text : queryInput.value).trim();
+  if (!query) return;
+
+  addUserMessage(query);
+  queryInput.value = "";
+  sendBtn.disabled = true;
+
+  const botMsg = addBotMessage();
+  const bubble = botMsg.querySelector(".bubble");
+  let accumulated = "";
+  let sourcesRendered = false;
+
+  try {
+    const res = await fetch("/api/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, top_k: 5 }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const payload = JSON.parse(line.slice(6));
+
+        if (payload.type === "sources" && !sourcesRendered) {
+          sourcesRendered = true;
+        } else if (payload.type === "delta") {
+          if (accumulated === "") bubble.innerHTML = "";
+          accumulated += payload.text;
+          bubble.innerHTML = marked.parse(accumulated) + '<span class="cursor-blink"></span>';
+          chat.scrollTop = chat.scrollHeight;
+        } else if (payload.type === "error") {
+          bubble.textContent = payload.text;
+        } else if (payload.type === "done") {
+          bubble.innerHTML = marked.parse(accumulated);
+          if (payload.sources) renderSources(botMsg, payload.sources);
+        }
+
+        // sources arrive in their own event; stash them for the done handler
+        if (payload.type === "sources") {
+          botMsg.dataset.pendingSources = JSON.stringify(payload.sources);
+        }
+        if (payload.type === "done" && botMsg.dataset.pendingSources) {
+          renderSources(botMsg, JSON.parse(botMsg.dataset.pendingSources));
+        }
+      }
+    }
+  } catch (err) {
+    bubble.textContent = "Connection error: " + err.message;
+  } finally {
+    sendBtn.disabled = false;
+    queryInput.focus();
+  }
+}
+
+sendBtn.addEventListener("click", () => sendQuery());
+queryInput.addEventListener("keydown", (e) => { if (e.key === "Enter") sendQuery(); });
+document.querySelectorAll(".suggestion-chip").forEach(chip => {
+  chip.addEventListener("click", () => sendQuery(chip.dataset.q));
+});
+</script>
+
+</body>
+</html>

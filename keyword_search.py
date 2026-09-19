@@ -1,13 +1,15 @@
 # Stage 6: keyword_search - lexical relevance scoring for hybrid retrieval.
 # Pipeline order: document.py -> chunk_text.py -> embed.py -> ingest.py -> retrieval.py -> keyword_search.py
-
-
+import os
 
 from qdrant_client import QdrantClient
 
 COLLECTION_NAME = "touchdesigner_docs"
 
-client = QdrantClient(url="http://localhost:6333")
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
+
+client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 
 def keyword_score(query: str, content: str) -> int:

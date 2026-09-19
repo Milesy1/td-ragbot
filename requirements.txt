@@ -3,3 +3,4 @@ uvicorn[standard]
 qdrant-client
 openai
 pydantic
+huggingface_hub

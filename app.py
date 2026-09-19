@@ -1,0 +1,125 @@
+# Stage 9: app - FastAPI backend serving the chat UI. Wires
+# hybrid_search() (retrieval) + Groq-hosted llama-3.1 (generation,
+# streamed) together into a real RAG endpoint, deployable on Render
+# since Groq is a hosted API, not a local model server.
+import json
+import os
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from openai import OpenAI
+
+from hybrid_search import hybrid_search
+
+app = FastAPI(title="TD RagBot")
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+
+llm_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=GROQ_API_KEY)
+
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+class ChatRequest(BaseModel):
+    query: str
+    top_k: int = 5
+
+
+def build_context_and_sources(query: str, top_k: int) -> tuple[str, list[dict]]:
+    """Run hybrid_search and build both the LLM context string and the
+    structured source list the frontend displays."""
+    results = hybrid_search(query, top_k=top_k)
+
+    context = "\n\n---\n\n".join(
+        f"[{payload['header_title']}]\n{payload['content']}"
+        for payload, _ in results
+    )
+
+    sources = [
+        {
+            "header_title": payload["header_title"],
+            "doc_category": payload["doc_category"],
+            "source": payload["source"],
+            "score": round(score, 4),
+        }
+        for payload, score in results
+    ]
+
+    return context, sources
+
+
+SYSTEM_PROMPT_TEMPLATE = (
+    "You are a TouchDesigner documentation assistant. Answer the user's "
+    "question using ONLY the provided context below. Use Markdown "
+    "formatting (headers, bullet points, fenced code blocks for any "
+    "TouchDesigner Python/expression syntax). If the context doesn't "
+    "contain the answer, say so plainly rather than guessing.\n\n"
+    "Context:\n{context}"
+)
+
+
+@app.get("/")
+def serve_ui() -> FileResponse:
+    """Serve the chat UI's index page."""
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.post("/api/chat/stream")
+def chat_stream(request: ChatRequest) -> StreamingResponse:
+    """
+    Stream a RAG answer token-by-token as Server-Sent Events.
+
+    First event carries the retrieved sources (so the UI can show them
+    immediately), followed by a stream of text-delta events as the LLM
+    generates, then a final "done" event.
+    """
+    if not request.query.strip():
+        def empty_stream():
+            yield f"data: {json.dumps({'type': 'error', 'text': 'Please enter a question.'})}\n\n"
+        return StreamingResponse(empty_stream(), media_type="text/event-stream")
+
+    def event_stream():
+        try:
+            context, sources = build_context_and_sources(request.query, request.top_k)
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'text': f'Retrieval failed: {e}'})}\n\n"
+            return
+
+        yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+
+        if not sources:
+            msg = "I couldn't find anything relevant in the TouchDesigner docs for that."
+            yield f"data: {json.dumps({'type': 'delta', 'text': msg})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
+        try:
+            stream = llm_client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(context=context)},
+                    {"role": "user", "content": request.query},
+                ],
+                stream=True,
+            )
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'text': f'Generation failed: {e}'})}\n\n"
+
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8420))
+    uvicorn.run(app, host="0.0.0.0", port=port)

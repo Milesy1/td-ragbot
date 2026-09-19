@@ -1,7 +1,8 @@
-# Stage 5: retrieve - semantic search against Qdrant (real stored
-# vectors, not in-memory lists), plus hybrid retrieval via keyword
-# search + Reciprocal Rank Fusion.
+# Stage 5: retrieve - semantic search against Qdrant Cloud (falls
+# back to local Qdrant if no cloud URL is set), plus hybrid retrieval
+# via keyword search + Reciprocal Rank Fusion.
 # Pipeline order: document.py -> chunk_text.py -> embed.py -> ingest.py -> retrieval.py
+import os
 
 from qdrant_client import QdrantClient
 
@@ -9,7 +10,10 @@ from embed import embed_text
 
 COLLECTION_NAME = "touchdesigner_docs"
 
-client = QdrantClient(url="http://localhost:6333")
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
+
+client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 
 def retrieve(query: str, top_k: int = 5) -> list:
