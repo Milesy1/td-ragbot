@@ -28,6 +28,7 @@ llm_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=GROQ_API_
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 COLLECTION_NAME = "touchdesigner_docs"
+EMBEDDING_MODEL_LABEL = "all-MiniLM-L6-v2 · 384d"
 stats_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -93,31 +94,43 @@ def serve_ui() -> FileResponse:
 @app.get("/api/stats")
 def get_stats() -> dict:
     """
-    Return live metadata from Qdrant: total chunk count and the set of
-    doc_category values actually present in the collection right now.
-    Powers the header ticker showing real corpus coverage.
+    Return live metadata from Qdrant: total chunk count, distinct source
+    file count, doc_category values present, collection health, and the
+    embedding model in use. Powers the header ticker showing real
+    corpus coverage.
     """
     try:
         info = stats_client.get_collection(COLLECTION_NAME)
         chunk_count = info.points_count
+        status = info.status.value if hasattr(info.status, "value") else str(info.status)
 
         # Scroll a sample of payloads to collect distinct doc_category
-        # values. Sampling (not a full scan) keeps this cheap even as
-        # the collection grows into the tens of thousands of points.
+        # and source values. Sampling (not a full scan) keeps this cheap
+        # even as the collection grows into the tens of thousands of
+        # points - source-file count from a sample is an estimate, not
+        # exact, once the corpus is larger than the sample size.
         categories = set()
+        sources = set()
         points, _ = stats_client.scroll(
             collection_name=COLLECTION_NAME,
-            limit=500,
-            with_payload=["doc_category"],
+            limit=2000,
+            with_payload=["doc_category", "source"],
         )
         for point in points:
             cat = point.payload.get("doc_category")
+            src = point.payload.get("source")
             if cat:
                 categories.add(cat)
+            if src:
+                sources.add(src)
 
         return {
             "chunk_count": chunk_count,
             "categories": sorted(categories),
+            "source_file_count": len(sources),
+            "source_file_count_is_estimate": chunk_count > len(points),
+            "status": status,
+            "embedding_model": EMBEDDING_MODEL_LABEL,
         }
     except Exception as e:
         print(f"[get_stats] error: {e}\n{traceback.format_exc()}")

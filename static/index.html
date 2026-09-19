@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>TD RagBot</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><line x1=%2210%22 y1=%2230%22 x2=%2220%22 y2=%2212%22 stroke=%22%235aa9ff%22 stroke-width=%223%22 opacity=%220.7%22/><line x1=%2220%22 y1=%2212%22 x2=%2231%22 y2=%2218%22 stroke=%22%238ee3ff%22 stroke-width=%223%22 opacity=%220.7%22/><circle cx=%2220%22 cy=%2212%22 r=%226%22 fill=%22%235aa9ff%22/><circle cx=%2210%22 cy=%2230%22 r=%224.5%22 fill=%22%238ee3ff%22/><circle cx=%2231%22 cy=%2218%22 r=%224.8%22 fill=%22%235aa9ff%22/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -136,30 +137,56 @@
     .status .pulse { animation: none; }
   }
 
+  /* ---- Ticker (marquee) ---- */
   .stats-bar {
-    padding: 6px 28px;
+    position: relative;
+    padding: 6px 0;
     border-bottom: 1px solid var(--border-soft);
     background: var(--panel-2);
     font-size: 11.5px;
     color: var(--text-dim);
+    flex-shrink: 0;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+  }
+  .stats-bar[hidden] { display: none; }
+  .ticker-track {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-    white-space: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
+    gap: 28px;
+    width: max-content;
+    animation: ticker-scroll 32s linear infinite;
   }
-  .stats-bar::-webkit-scrollbar { display: none; }
+  .stats-bar:hover .ticker-track { animation-play-state: paused; }
+  @keyframes ticker-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  .ticker-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    padding: 0 14px;
+  }
   .stats-bar .stat-chip {
     background: var(--panel);
     border: 1px solid var(--border-soft);
     padding: 3px 9px;
     border-radius: 999px;
+    white-space: nowrap;
     flex-shrink: 0;
   }
   .stats-bar .stat-chip strong { color: var(--accent); font-weight: 600; }
-  .stats-bar[hidden] { display: none; }
+  .stats-bar .stat-chip.status-green strong { color: #4ade80; }
+  /* Reduced motion: no scrolling, just a static centered line that
+     can be read normally (still horizontally scrollable by hand). */
+  @media (prefers-reduced-motion: reduce) {
+    .stats-bar { overflow-x: auto; -webkit-mask-image: none; mask-image: none; }
+    .ticker-track { animation: none; width: auto; justify-content: center; }
+    .ticker-track .ticker-group:nth-child(2) { display: none; }
+  }
 
   #theme-toggle {
     display: flex; align-items: center; justify-content: center;
@@ -401,7 +428,7 @@
     .status span:not(.pulse) { display: none; }
     .status { padding: 6px 8px; }
     #theme-toggle, .clear-btn { width: 28px; height: 28px; }
-    .stats-bar { padding: 5px 14px; font-size: 10.5px; }
+    .stats-bar { padding: 5px 0; font-size: 10.5px; }
 
     #chat { padding: 18px 14px 14px; gap: 16px; }
     .msg { max-width: 92%; }
@@ -464,8 +491,10 @@
 </header>
 
 <div class="stats-bar" id="stats-bar" hidden aria-live="off">
-  <span class="stat-chip" id="stat-chunks"></span>
-  <span class="stat-chip" id="stat-categories"></span>
+  <div class="ticker-track" id="ticker-track">
+    <div class="ticker-group" id="ticker-group-1"></div>
+    <div class="ticker-group" id="ticker-group-2" aria-hidden="true"></div>
+  </div>
 </div>
 
 <div id="chat" role="log" aria-live="polite" aria-label="Conversation">
@@ -543,7 +572,31 @@ themeToggle.addEventListener("click", () => {
   try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* ignore */ }
 });
 
-// --- Corpus stats (real data from Qdrant via /api/stats) ---
+// --- Corpus stats ticker (real data from Qdrant via /api/stats) ---
+// The track is duplicated (group-1 + group-2, identical content) and
+// scrolled exactly -50% via CSS animation, so it loops seamlessly -
+// standard marquee technique. Reduced-motion users get a static,
+// centered, non-duplicated line instead (see the media query in CSS).
+function buildStatChips(data) {
+  const chips = [];
+  chips.push(`<span class="stat-chip"><strong>${data.chunk_count.toLocaleString()}</strong> chunks indexed</span>`);
+  if (data.source_file_count) {
+    const approx = data.source_file_count_is_estimate ? "~" : "";
+    chips.push(`<span class="stat-chip">${approx}<strong>${data.source_file_count.toLocaleString()}</strong> source files</span>`);
+  }
+  if (data.categories && data.categories.length > 0) {
+    chips.push(`<span class="stat-chip">${data.categories.join(" · ")}</span>`);
+  }
+  if (data.embedding_model) {
+    chips.push(`<span class="stat-chip">${data.embedding_model}</span>`);
+  }
+  if (data.status) {
+    const cls = data.status === "green" ? " status-green" : "";
+    chips.push(`<span class="stat-chip${cls}">Qdrant: <strong>${data.status}</strong></span>`);
+  }
+  return chips.join("");
+}
+
 async function loadStats() {
   try {
     const res = await fetch("/api/stats");
@@ -551,16 +604,9 @@ async function loadStats() {
     if (data.chunk_count == null) return; // fail silently, non-critical
 
     const bar = document.getElementById("stats-bar");
-    const chunksEl = document.getElementById("stat-chunks");
-    const catsEl = document.getElementById("stat-categories");
-
-    chunksEl.innerHTML = `<strong>${data.chunk_count.toLocaleString()}</strong> chunks indexed`;
-    if (data.categories && data.categories.length > 0) {
-      catsEl.textContent = data.categories.join(" · ");
-      catsEl.hidden = false;
-    } else {
-      catsEl.hidden = true;
-    }
+    const html = buildStatChips(data);
+    document.getElementById("ticker-group-1").innerHTML = html;
+    document.getElementById("ticker-group-2").innerHTML = html;
     bar.hidden = false;
   } catch (e) {
     // Stats are decorative, not essential - never block the app on this.
