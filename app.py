@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from openai import OpenAI
+from qdrant_client import QdrantClient
 
 from hybrid_search import hybrid_search
 
@@ -23,6 +24,11 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 
 llm_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=GROQ_API_KEY)
+
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
+COLLECTION_NAME = "touchdesigner_docs"
+stats_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -82,6 +88,40 @@ SYSTEM_PROMPT_TEMPLATE = (
 def serve_ui() -> FileResponse:
     """Serve the chat UI's index page."""
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/stats")
+def get_stats() -> dict:
+    """
+    Return live metadata from Qdrant: total chunk count and the set of
+    doc_category values actually present in the collection right now.
+    Powers the header ticker showing real corpus coverage.
+    """
+    try:
+        info = stats_client.get_collection(COLLECTION_NAME)
+        chunk_count = info.points_count
+
+        # Scroll a sample of payloads to collect distinct doc_category
+        # values. Sampling (not a full scan) keeps this cheap even as
+        # the collection grows into the tens of thousands of points.
+        categories = set()
+        points, _ = stats_client.scroll(
+            collection_name=COLLECTION_NAME,
+            limit=500,
+            with_payload=["doc_category"],
+        )
+        for point in points:
+            cat = point.payload.get("doc_category")
+            if cat:
+                categories.add(cat)
+
+        return {
+            "chunk_count": chunk_count,
+            "categories": sorted(categories),
+        }
+    except Exception as e:
+        print(f"[get_stats] error: {e}\n{traceback.format_exc()}")
+        return {"chunk_count": None, "categories": []}
 
 
 @app.post("/api/chat/stream")

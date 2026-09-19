@@ -136,6 +136,31 @@
     .status .pulse { animation: none; }
   }
 
+  .stats-bar {
+    padding: 6px 28px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--panel-2);
+    font-size: 11.5px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .stats-bar::-webkit-scrollbar { display: none; }
+  .stats-bar .stat-chip {
+    background: var(--panel);
+    border: 1px solid var(--border-soft);
+    padding: 3px 9px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+  .stats-bar .stat-chip strong { color: var(--accent); font-weight: 600; }
+  .stats-bar[hidden] { display: none; }
+
   #theme-toggle {
     display: flex; align-items: center; justify-content: center;
     width: 32px; height: 32px; border-radius: 999px;
@@ -376,6 +401,7 @@
     .status span:not(.pulse) { display: none; }
     .status { padding: 6px 8px; }
     #theme-toggle, .clear-btn { width: 28px; height: 28px; }
+    .stats-bar { padding: 5px 14px; font-size: 10.5px; }
 
     #chat { padding: 18px 14px 14px; gap: 16px; }
     .msg { max-width: 92%; }
@@ -436,6 +462,11 @@
     </button>
   </div>
 </header>
+
+<div class="stats-bar" id="stats-bar" hidden aria-live="off">
+  <span class="stat-chip" id="stat-chunks"></span>
+  <span class="stat-chip" id="stat-categories"></span>
+</div>
 
 <div id="chat" role="log" aria-live="polite" aria-label="Conversation">
   <div class="empty-state" id="empty-state">
@@ -511,6 +542,31 @@ themeToggle.addEventListener("click", () => {
   applyTheme(next);
   try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* ignore */ }
 });
+
+// --- Corpus stats (real data from Qdrant via /api/stats) ---
+async function loadStats() {
+  try {
+    const res = await fetch("/api/stats");
+    const data = await res.json();
+    if (data.chunk_count == null) return; // fail silently, non-critical
+
+    const bar = document.getElementById("stats-bar");
+    const chunksEl = document.getElementById("stat-chunks");
+    const catsEl = document.getElementById("stat-categories");
+
+    chunksEl.innerHTML = `<strong>${data.chunk_count.toLocaleString()}</strong> chunks indexed`;
+    if (data.categories && data.categories.length > 0) {
+      catsEl.textContent = data.categories.join(" · ");
+      catsEl.hidden = false;
+    } else {
+      catsEl.hidden = true;
+    }
+    bar.hidden = false;
+  } catch (e) {
+    // Stats are decorative, not essential - never block the app on this.
+  }
+}
+loadStats();
 
 // --- Chat logic ---
 marked.setOptions({
