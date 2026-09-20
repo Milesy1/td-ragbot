@@ -1,4 +1,9 @@
 __pycache__/
 *.pyc
 *_log.txt
+.pytest_cache/
+pytest-cache-files-*/
 .env
+.env.*
+!.env.example
+audit.jsonl
