@@ -1,30 +1,40 @@
 # TD RagBot
 
-A RAG bot for TouchDesigner documentation, built on a fully local stack — zero ongoing cost, no data leaving the machine. Each file follows a higher standard than the earlier `miles-rag` build: type hints, docstrings, and real error handling throughout.
+A RAG bot for TouchDesigner documentation. Retrieval runs against Qdrant; embeddings come from Hugging Face Inference (`all-MiniLM-L6-v2`, 384-d); generation is streamed from Groq (`llama-3.1-8b-instant`). Each file uses type hints, docstrings, and real error handling.
 
 ## Stack
 
-- **Ollama** — local LLM (`llama3.1`) + embeddings (`nomic-embed-text`), OpenAI-compatible API at `localhost:11434`
-- **Qdrant** — local vector store, run via Docker (`--restart unless-stopped`, persistent volume — survives restarts)
-- **Python RAG pipeline** — reusing concepts from `miles-rag` (chunking, hybrid retrieval), rebuilt against real Qdrant storage instead of in-memory lists
+- **Hugging Face Inference API** — embeddings (`sentence-transformers/all-MiniLM-L6-v2`, 384 dimensions). Set `HUGGINGFACE_TOKEN`.
+- **Groq** — hosted LLM (`llama-3.1-8b-instant` by default, override with `GROQ_MODEL`). Set `GROQ_API_KEY`.
+- **Qdrant** — vector store. Local Docker (`http://localhost:6333`) or Qdrant Cloud via `QDRANT_URL` / `QDRANT_API_KEY`.
+- **FastAPI** — chat UI + SSE `/api/chat/stream` in `app.py`.
 
-## Built so far
+Shared settings live in `config.py` so ingest and query cannot drift.
 
-- **`document.py`** — `Document` class: `content`, `source`, `header_title`, `doc_category`. Raises `ValueError` on empty content.
-- **`chunk_text.py`** — `split_by_headers()`: splits markdown by headers into `(header_title, section_text)` pairs. `chunk_section()`: character-count/overlap chunking within a section, with error handling for invalid `chunk_size`/`overlap`.
-- **`embed.py`** — `embed_text()`: 768-dim embeddings via Ollama's `nomic-embed-text`, with error handling for empty input and connection failures.
-- **`ingest.py`** — the orchestrator: walks a real folder of `.md` files, splits by header, chunks, wraps each chunk in a `Document`, embeds, and stores into Qdrant (`touchdesigner_docs` collection). Idempotent collection creation. Verified: 101 real chunks ingested from `wiki`.
-- **`retrieval.py`** — `retrieve()`: semantic search against real stored Qdrant vectors via `query_points()`.
-- **`keyword_search.py`** — `keyword_search()`: lexical relevance via `client.scroll()` + keyword overlap scoring.
-- **`hybrid_search.py`** — `rrf_combine()`: fuses semantic + keyword rankings via Reciprocal Rank Fusion (rank position, not raw score, since the two scales are incompatible). `hybrid_search()`: runs both searches and returns the fused top-k. Verified: results genuinely more diverse than semantic-only search.
-- **`eval.py`** — `run_eval()`: a real eval harness — 5 test queries against the ingested `wiki` docs, checking whether the expected keyword appears in the top hybrid result. Result: 5/5 passed.
-- **`model_search.py`** (side-quest) — searches Hugging Face's Model Hub programmatically for candidate embedding models, so alternatives to `nomic-embed-text` can be compared before scaling to the full corpus.
+## Pipeline
 
-See `flows/` for a step-by-step trace of each file's logic, including error paths.
+- **`document.py`** — `Document` class: `content`, `source`, `header_title`, `doc_category`. Raises `ValueError` on empty or whitespace-only content.
+- **`chunk_text.py`** — `split_by_headers()`: CommonMark ATX headers only; keeps preamble; ignores `#` inside fenced code blocks. `chunk_section()`: overlapping chunks that break on whitespace.
+- **`embed.py`** — `embed_text()`: 384-d vectors via HF Inference, retrying only 429/5xx/timeouts.
+- **`ingest.py`** — walks a folder of `.md` files, chunks, embeds, batch-upserts into `touchdesigner_docs`. Deterministic UUID point IDs (`uuid5` of relative source path + chunk index). Creates a text index on `content` for keyword search. Usage: `python ingest.py path/to/docs_clean/wiki` (or set `DOCS_FOLDER`).
+- **`retrieval.py`** — `retrieve()`: semantic search via `query_points()`.
+- **`keyword_search.py`** — `keyword_search()`: text-index filter (paginated scroll fallback) + keyword overlap scoring.
+- **`hybrid_search.py`** — runs semantic + keyword search in parallel, fuses with Reciprocal Rank Fusion.
+- **`eval.py`** — recall@k harness: expected phrase must appear in header, source, or content of any top-k hit.
+- **`app.py`** — FastAPI UI + streaming RAG. History roles are allow-listed (`user`/`assistant`); `top_k` and payload sizes are capped; context is concatenated (not `str.format`) so TD `{expressions}` cannot break the prompt.
+- **`model_search.py`** (side-quest) — searches Hugging Face's Model Hub for candidate embedding models.
+
+See `flows/` for a step-by-step trace of each file's logic, including error paths. Those notes predate some of the search/ID changes above; the Python modules are the source of truth.
 
 ## Content source
 
-Existing cleaned TouchDesigner documentation corpus (`docs_clean/wiki`, `forum`, `github_repos`, `introduction-book`, `pauric_freeman`). Currently only `wiki` has been ingested; full-corpus ingestion is a planned next step.
+Existing cleaned TouchDesigner documentation corpus (`docs_clean/wiki`, `forum`, `github_repos`, `introduction-book`, `pauric_freeman`).
+
+**Re-ingest after this change.** Point IDs switched from 64-bit ints (unsafe over JSON) to UUIDs, and source paths are now repo-relative. Old points will not be updated in place — recreate or overwrite the collection, then:
+
+```
+python ingest.py path/to/docs_clean/wiki
+```
 
 ## Remaining work
 

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>About · TD RagBot</title>
+<link rel="icon" id="favicon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%23000%22/><circle cx=%2220%22 cy=%2220%22 r=%2214%22 fill=%22none%22 stroke=%22%23ffffff%22 stroke-width=%222%22/><circle cx=%2220%22 cy=%2220%22 r=%2210%22 fill=%22none%22 stroke=%22%23ff3b30%22 stroke-width=%222%22/><circle cx=%2220%22 cy=%2220%22 r=%226%22 fill=%22none%22 stroke=%22%234ade80%22 stroke-width=%222%22/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha512-dLxUelApnYxpLt6K2iomGngnHO83iUvZytA3YjDUCjT0HDOHKXnVYdf3hU4JjM8uEhxf9nD1/ey98U3t2vZ0qQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="/static/shared.js"></script>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="/" title="Back to chat" aria-label="Back to chat" style="text-decoration:none">
+    <div class="logo" id="header-logo" aria-hidden="true">
+      <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="var(--logo-1)"/>
+            <stop offset="100%" stop-color="var(--logo-2)"/>
+          </linearGradient>
+        </defs>
+        <line x1="10" y1="30" x2="20" y2="12" stroke="url(#logoGrad)" stroke-width="1.6" opacity="0.7"/>
+        <line x1="20" y1="12" x2="31" y2="18" stroke="url(#logoGrad)" stroke-width="1.6" opacity="0.7"/>
+        <line x1="20" y1="12" x2="14" y2="8" stroke="url(#logoGrad)" stroke-width="1.6" opacity="0.5"/>
+        <line x1="10" y1="30" x2="24" y2="33" stroke="url(#logoGrad)" stroke-width="1.6" opacity="0.5"/>
+        <line x1="31" y1="18" x2="24" y2="33" stroke="url(#logoGrad)" stroke-width="1.6" opacity="0.6"/>
+        <circle cx="20" cy="12" r="4" fill="url(#logoGrad)"/>
+        <circle cx="10" cy="30" r="3" fill="url(#logoGrad)" opacity="0.85"/>
+        <circle cx="31" cy="18" r="3.2" fill="url(#logoGrad)" opacity="0.9"/>
+        <circle cx="14" cy="8" r="1.8" fill="url(#logoGrad)" opacity="0.6"/>
+        <circle cx="24" cy="33" r="2.2" fill="url(#logoGrad)" opacity="0.7"/>
+      </svg>
+      <img id="header-logo-img" alt="" />
+    </div>
+    <div>
+      <h1>TD RagBot</h1>
+      <div class="sub">TouchDesigner docs · answered anywhere</div>
+    </div>
+  </a>
+  <div class="header-right">
+    <a class="nav-link" href="/" style="background: var(--panel); color: var(--text);">Chat</a>
+    <button id="theme-toggle" title="Toggle light/dark theme" aria-label="Toggle light and dark theme" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+    </button>
+  </div>
+</header>
+
+<div class="about-page">
+  <div class="about-hero">
+    <div class="hero-canvas-wrap" id="hero-canvas" aria-hidden="true"></div>
+  </div>
+
+  <div class="about-body">
+
+    <h2 style="margin-top:0;padding-top:0;border-top:none;">About</h2>
+    <p>TD RagBot answers questions about TouchDesigner from a fixed corpus of documentation and community material. This page states what the system does, what it is built from, and what it does not do.</p>
+
+    <div class="about-stats" id="about-stats">
+      <div class="about-stat"><span class="num">4,979</span><span class="label">Chunks indexed</span></div>
+      <div class="about-stat"><span class="num">~287</span><span class="label">Source files</span></div>
+    </div>
+
+    <h2>Corpus</h2>
+    <p>4,979 chunks from approximately 287 source files: the TouchDesigner wiki, forum threads, an introductory book, and several GitHub repositories. Documents are split by header where headers exist and by character count where they do not. Each chunk retains its source path, section title, and category, so any answer can be traced to the passages it was generated from.</p>
+
+    <h2>Retrieval</h2>
+    <p>Your question is embedded as a 384-dimensional vector using <code>all-MiniLM-L6-v2</code> and compared by cosine distance against every chunk in the corpus. In parallel, the same question is scored by keyword overlap against the same corpus. The two rankings are fused by reciprocal rank fusion, which ranks by position rather than raw score because the two scoring scales are not commensurate. The highest-ranked chunks are given to a language model with an instruction to answer only from the provided material and to state plainly when the answer is not present.</p>
+
+    <h2>Infrastructure</h2>
+    <p>Embeddings are served by Hugging Face's hosted inference API. Vectors are stored in Qdrant Cloud. Generation is an open-weight model hosted on Groq. No component is trained, tuned, or operated by this project. Responses stream token by token because that is the shape of the underlying API; the interface does not buffer them.</p>
+
+    <h2>Limitations</h2>
+    <p>The system does not retain conversations between sessions, and it does not train on usage &mdash; no model weights are updated. What it does do is learn: knowledge expands through ingestion, and documents added to the corpus become retrievable at the next index update. You can see this working in the corpus itself &mdash; event-driven MIDI triggering in TouchDesigner, documented from a working project and ingested as source material, is now something the system can answer from. It has no independent access to your machine, files, or TouchDesigner projects; anything it knows arrived through the corpus. When the corpus does not contain an answer, the intended behaviour is to say so. Whether it does so consistently is covered by the evaluation harness, not assumed.</p>
+
+    <h2>Evaluation</h2>
+    <p>A fixed set of test questions is run against retrieval on every change to the pipeline. Each question passes if the top-ranked chunk it returns contains an expected keyword tied to the correct section of the corpus; a fail means retrieval surfaced the wrong material before generation ever saw it. This checks retrieval precision, not the generated answer itself — a passing retrieval can still be followed by a poorly phrased response, and a failing one is not always visible in the final text.</p>
+
+    <h2>Status</h2>
+    <p>The system is under active development. Known-corrected defects include an ID scheme that could silently overwrite unrelated data, a template that could fail on unescaped braces, and an endpoint with no request bound. Further issues are expected and are handled the same way: found, fixed, tested.</p>
+
+  </div>
+</div>
+
+<script>
+initTheme();
+initHeroAnimation();
+
+async function loadAboutStats() {
+  try {
+    const res = await fetch("/api/stats");
+    const data = await res.json();
+    if (data.chunk_count == null) return;
+    const statEls = document.querySelectorAll("#about-stats .num");
+    if (statEls[0]) statEls[0].textContent = Number(data.chunk_count).toLocaleString();
+    if (statEls[1] && data.source_file_count) {
+      const approx = data.source_file_count_is_estimate ? "~" : "";
+      statEls[1].textContent = approx + Number(data.source_file_count).toLocaleString();
+    }
+  } catch (e) {
+    // Stats are supplementary here - the prose stands without them.
+  }
+}
+loadAboutStats();
+</script>
+
+</body>
+</html>

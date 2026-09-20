@@ -4,53 +4,69 @@
 # since Groq is a hosted API, not a local model server. Supports
 # multi-turn conversation - the client sends the full message history,
 # retrieval uses only the latest question.
+import asyncio
 import json
 import os
 import traceback
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 from openai import OpenAI
-from qdrant_client import QdrantClient
+from pydantic import BaseModel, Field
 
+from config import (
+    COLLECTION_NAME,
+    DEFAULT_TOP_K,
+    EMBEDDING_MODEL_LABEL,
+    GROQ_API_KEY,
+    GROQ_MODEL,
+    MAX_HISTORY_ITEMS,
+    MAX_HISTORY_MESSAGES,
+    MAX_MESSAGE_CONTENT_LENGTH,
+    MAX_QUERY_LENGTH,
+    MAX_TOP_K,
+    MIN_TOP_K,
+    get_qdrant_client,
+)
 from hybrid_search import hybrid_search
 
 app = FastAPI(title="TD RagBot")
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
-
 llm_client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key=GROQ_API_KEY)
-
-QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
-QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
-COLLECTION_NAME = "touchdesigner_docs"
-# ASCII-only label deliberately (no Unicode middle-dot) - avoids
-# encoding mismatches between this file's saved encoding and Render's
-# runtime that previously corrupted a "-" character into "Â·".
-EMBEDDING_MODEL_LABEL = "all-MiniLM-L6-v2 (384d)"
-stats_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# Cap how much history gets sent to the model per request, so cost/latency
-# don't grow unbounded as a conversation gets long.
-MAX_HISTORY_MESSAGES = 10
+_STREAM_DONE = object()
+
+SYSTEM_PROMPT = (
+    "You are a TouchDesigner documentation assistant. Answer the user's "
+    "question using ONLY the provided context below. Use Markdown "
+    "formatting (headers, bullet points, fenced code blocks for any "
+    "TouchDesigner Python/expression syntax). If the context doesn't "
+    "contain the answer, say so plainly rather than guessing. The "
+    "conversation history is provided so you can understand follow-up "
+    "questions that refer back to earlier messages.\n\n"
+    "Context:\n"
+)
 
 
 class Message(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=MAX_MESSAGE_CONTENT_LENGTH)
 
 
 class ChatRequest(BaseModel):
-    query: str
-    top_k: int = 5
-    history: list[Message] = []
+    query: str = Field(..., min_length=1, max_length=MAX_QUERY_LENGTH)
+    top_k: int = Field(default=DEFAULT_TOP_K, ge=MIN_TOP_K, le=MAX_TOP_K)
+    history: list[Message] = Field(default_factory=list, max_length=MAX_HISTORY_ITEMS)
+
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
 
 
 def build_context_and_sources(query: str, top_k: int) -> tuple[str, list[dict]]:
@@ -76,16 +92,15 @@ def build_context_and_sources(query: str, top_k: int) -> tuple[str, list[dict]]:
     return context, sources
 
 
-SYSTEM_PROMPT_TEMPLATE = (
-    "You are a TouchDesigner documentation assistant. Answer the user's "
-    "question using ONLY the provided context below. Use Markdown "
-    "formatting (headers, bullet points, fenced code blocks for any "
-    "TouchDesigner Python/expression syntax). If the context doesn't "
-    "contain the answer, say so plainly rather than guessing. The "
-    "conversation history is provided so you can understand follow-up "
-    "questions that refer back to earlier messages.\n\n"
-    "Context:\n{context}"
-)
+def _empty_stats() -> dict:
+    return {
+        "chunk_count": None,
+        "categories": [],
+        "source_file_count": None,
+        "source_file_count_is_estimate": False,
+        "status": None,
+        "embedding_model": EMBEDDING_MODEL_LABEL,
+    }
 
 
 @app.get("/", include_in_schema=False)
@@ -103,6 +118,13 @@ def serve_ui() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/about", include_in_schema=False)
+def serve_about() -> FileResponse:
+    """Serve the About page - architecture, provenance, and honest
+    limitations, written for a human reader rather than a developer."""
+    return FileResponse(STATIC_DIR / "about.html")
+
+
 @app.get("/api/stats")
 def get_stats() -> dict:
     """
@@ -112,7 +134,8 @@ def get_stats() -> dict:
     corpus coverage.
     """
     try:
-        info = stats_client.get_collection(COLLECTION_NAME)
+        client = get_qdrant_client()
+        info = client.get_collection(COLLECTION_NAME)
         chunk_count = info.points_count
         status = info.status.value if hasattr(info.status, "value") else str(info.status)
 
@@ -123,14 +146,15 @@ def get_stats() -> dict:
         # exact, once the corpus is larger than the sample size.
         categories = set()
         sources = set()
-        points, _ = stats_client.scroll(
+        points, _ = client.scroll(
             collection_name=COLLECTION_NAME,
             limit=2000,
             with_payload=["doc_category", "source"],
         )
         for point in points:
-            cat = point.payload.get("doc_category")
-            src = point.payload.get("source")
+            payload = point.payload or {}
+            cat = payload.get("doc_category")
+            src = payload.get("source")
             if cat:
                 categories.add(cat)
             if src:
@@ -140,17 +164,24 @@ def get_stats() -> dict:
             "chunk_count": chunk_count,
             "categories": sorted(categories),
             "source_file_count": len(sources),
-            "source_file_count_is_estimate": chunk_count > len(points),
+            "source_file_count_is_estimate": chunk_count is not None and chunk_count > len(points),
             "status": status,
             "embedding_model": EMBEDDING_MODEL_LABEL,
         }
     except Exception as e:
         print(f"[get_stats] error: {e}\n{traceback.format_exc()}")
-        return {"chunk_count": None, "categories": []}
+        return _empty_stats()
+
+
+def _next_llm_chunk(iterator):
+    try:
+        return next(iterator)
+    except StopIteration:
+        return _STREAM_DONE
 
 
 @app.post("/api/chat/stream")
-def chat_stream(request: ChatRequest) -> StreamingResponse:
+async def chat_stream(request: ChatRequest) -> StreamingResponse:
     """
     Stream a RAG answer token-by-token as Server-Sent Events.
 
@@ -162,61 +193,72 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
     First event carries the retrieved sources (so the UI can show them
     immediately), followed by a stream of text-delta events as the LLM
     generates, then a final "done" event.
+
+    Blocking HF/Qdrant/Groq calls run in a worker thread so one slow
+    request does not stall the event loop.
     """
     if not request.query.strip():
-        def empty_stream():
-            yield f"data: {json.dumps({'type': 'error', 'text': 'Please enter a question.'})}\n\n"
+        async def empty_stream():
+            yield _sse({"type": "error", "text": "Please enter a question."})
+
         return StreamingResponse(empty_stream(), media_type="text/event-stream")
 
-    def event_stream():
+    async def event_stream():
         try:
-            context, sources = build_context_and_sources(request.query, request.top_k)
+            context, sources = await asyncio.to_thread(
+                build_context_and_sources, request.query, request.top_k
+            )
         except Exception as e:
             print(f"[chat_stream] retrieval error: {e}\n{traceback.format_exc()}")
-            yield f"data: {json.dumps({'type': 'error', 'text': f'Retrieval failed: {e}'})}\n\n"
+            yield _sse({"type": "error", "text": "Retrieval failed. Please try again."})
             return
 
-        yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
+        yield _sse({"type": "sources", "sources": sources})
 
         if not sources:
             msg = "I couldn't find anything relevant in the TouchDesigner docs for that."
-            yield f"data: {json.dumps({'type': 'delta', 'text': msg})}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            yield _sse({"type": "delta", "text": msg})
+            yield _sse({"type": "done"})
             return
 
-        # Build the message list: system prompt (with fresh retrieval
-        # context) + capped prior history + the new question. The prior
-        # history is capped to avoid unbounded cost/latency growth as a
-        # conversation gets long.
+        # Concatenate context rather than str.format so curly braces in
+        # retrieved TouchDesigner Python/expressions cannot KeyError.
         capped_history = request.history[-MAX_HISTORY_MESSAGES:]
-        messages = [{"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(context=context)}]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT + context}]
         messages.extend({"role": m.role, "content": m.content} for m in capped_history)
         messages.append({"role": "user", "content": request.query})
 
         delta_count = 0
         try:
-            stream = llm_client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=messages,
-                stream=True,
+            stream = await asyncio.to_thread(
+                lambda: llm_client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=messages,
+                    stream=True,
+                )
             )
-            for chunk in stream:
+            iterator = iter(stream)
+            while True:
+                chunk = await asyncio.to_thread(_next_llm_chunk, iterator)
+                if chunk is _STREAM_DONE:
+                    break
                 delta = chunk.choices[0].delta.content
                 if delta:
                     delta_count += 1
-                    yield f"data: {json.dumps({'type': 'delta', 'text': delta})}\n\n"
+                    yield _sse({"type": "delta", "text": delta})
 
             if delta_count == 0:
-                # Groq returned a stream with zero content deltas - surface
-                # this clearly instead of silently finishing with no text.
                 print("[chat_stream] Groq stream completed with zero content deltas")
-                yield f"data: {json.dumps({'type': 'error', 'text': 'The model returned an empty response. Please try again.'})}\n\n"
+                yield _sse({
+                    "type": "error",
+                    "text": "The model returned an empty response. Please try again.",
+                })
 
         except Exception as e:
             print(f"[chat_stream] generation error: {e}\n{traceback.format_exc()}")
-            yield f"data: {json.dumps({'type': 'error', 'text': f'Generation failed: {e}'})}\n\n"
+            yield _sse({"type": "error", "text": "Generation failed. Please try again."})
 
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        yield _sse({"type": "done"})
 
     return StreamingResponse(
         event_stream(),

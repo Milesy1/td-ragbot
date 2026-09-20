@@ -1,53 +1,97 @@
-# Stage 3: embed - turns text into a vector using Hugging Face's
-# hosted Inference API (works both locally and when deployed - no
-# local model server required, unlike the earlier Ollama version).
-# Retries transient failures (HF's serverless inference occasionally
-# returns 502/503 under load or while a model "wakes up") with
-# exponential backoff, since a single hiccup shouldn't kill a long
-# ingestion run over thousands of chunks.
-import os
+# Stage 3: embed - turns text into a 384-d vector using all-MiniLM-L6-v2.
+# Prefers a local SentenceTransformer (fast, no per-chunk API, works
+# offline). Falls back to Hugging Face Inference if the local model
+# cannot be loaded (e.g. a slim deploy without torch).
+# Pipeline order: document.py -> chunk_text.py -> embed.py -> ingest.py -> retrieval.py
 import time
+from functools import lru_cache
 
 from huggingface_hub import InferenceClient
+from huggingface_hub.errors import HfHubHTTPError, InferenceTimeoutError, OverloadedError
 
-MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+from config import EMBEDDING_MODEL, HUGGINGFACE_TOKEN
+
 MAX_RETRIES = 4
 BASE_DELAY_SECONDS = 2
+RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 
-client = InferenceClient(
-    provider="hf-inference",
-    api_key=os.environ.get("HUGGINGFACE_TOKEN"),
-)
+
+@lru_cache(maxsize=1)
+def _local_model():
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer(EMBEDDING_MODEL, token=HUGGINGFACE_TOKEN)
+
+
+@lru_cache(maxsize=1)
+def _hf_client() -> InferenceClient:
+    return InferenceClient(provider="hf-inference", api_key=HUGGINGFACE_TOKEN)
+
+
+def _status_code(exc: Exception) -> int | None:
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        return int(status)
+    response = getattr(exc, "response", None)
+    if response is not None:
+        return getattr(response, "status_code", None)
+    return None
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Retry timeouts, overload, and transient HTTP errors — not 401/403/404."""
+    if isinstance(exc, (TimeoutError, ConnectionError, InferenceTimeoutError, OverloadedError)):
+        return True
+    if isinstance(exc, HfHubHTTPError):
+        status = _status_code(exc)
+        return status in RETRYABLE_STATUS
+    msg = str(exc).lower()
+    return any(token in msg for token in ("timeout", "timed out", "429", "502", "503", "504", "overloaded"))
+
+
+def _vector_from_result(result) -> list[float]:
+    vector = result.mean(axis=0) if getattr(result, "ndim", 1) == 2 else result
+    return vector.tolist() if hasattr(vector, "tolist") else list(vector)
+
+
+def _embed_local(text: str) -> list[float]:
+    vector = _local_model().encode(text, normalize_embeddings=True)
+    return _vector_from_result(vector)
+
+
+def _embed_hf(text: str) -> list[float]:
+    last_error: Exception | None = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            result = _hf_client().feature_extraction(text, model=EMBEDDING_MODEL)
+            return _vector_from_result(result)
+        except Exception as e:
+            last_error = e
+            if attempt < MAX_RETRIES - 1 and _is_retryable(e):
+                delay = BASE_DELAY_SECONDS * (2 ** attempt)
+                print(f"[embed_text] HF attempt {attempt + 1} failed ({e}), retrying in {delay}s...")
+                time.sleep(delay)
+                continue
+            break
+    raise RuntimeError(
+        f"Hugging Face embedding failed. Is HUGGINGFACE_TOKEN allowed to "
+        f"call Inference Providers? Error: {last_error}"
+    )
 
 
 def embed_text(text: str) -> list[float]:
     """
     Generate a 384-dim vector embedding for the given text using
-    Hugging Face's hosted Inference API (all-MiniLM-L6-v2).
-
-    Retries transient server errors (502/503/timeouts) with exponential
-    backoff (2s, 4s, 8s, 16s) before giving up, since these are common
-    and usually resolve within a few seconds.
+    all-MiniLM-L6-v2. Local sentence-transformers is tried first;
+    Hugging Face's hosted Inference API is the fallback.
     """
     if not text.strip():
         raise ValueError("text cannot be empty")
 
-    last_error = None
-    for attempt in range(MAX_RETRIES):
-        try:
-            result = client.feature_extraction(text, model=MODEL_NAME)
-            # Some models return per-token vectors (2D array) - mean-pool
-            # to a single sentence-level vector if so.
-            vector = result.mean(axis=0) if result.ndim == 2 else result
-            return vector.tolist()
-        except Exception as e:
-            last_error = e
-            if attempt < MAX_RETRIES - 1:
-                delay = BASE_DELAY_SECONDS * (2 ** attempt)
-                print(f"[embed_text] attempt {attempt + 1} failed ({e}), retrying in {delay}s...")
-                time.sleep(delay)
-
-    raise RuntimeError(f"Embedding failed after {MAX_RETRIES} attempts. Is HUGGINGFACE_TOKEN set correctly? Error: {last_error}")
+    try:
+        return _embed_local(text)
+    except Exception as local_error:
+        print(f"[embed_text] local model unavailable ({local_error}); falling back to HF Inference")
+        return _embed_hf(text)
 
 
 if __name__ == "__main__":

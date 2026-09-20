@@ -8,7 +8,7 @@ class Document:
     # it configures one that already exists.
     def __init__(self, content: str, source: str, header_title: str, doc_category: str):
         """Wraps one chunk of text with metadata for tracing it back to its source."""
-        if not content:
+        if not content or not content.strip():
             raise ValueError("content cannot be empty")
         self.content = content
         self.source = source
@@ -19,8 +19,13 @@ class Document:
 if __name__ == "__main__":
     d = Document("hello", "test.md", "Introduction", "document")
     print(d.content, d.source, d.header_title, d.doc_category)
-    
+
     try:
-        bad = Document("", "test.md", "Introduction", "document")
+        Document("", "test.md", "Introduction", "document")
     except ValueError as e:
         print(f"Correctly caught error: {e}")
+
+    try:
+        Document("   ", "test.md", "Introduction", "document")
+    except ValueError as e:
+        print(f"Correctly caught whitespace error: {e}")

@@ -1,6 +1,6 @@
-# Stage 7 (side-quest): model_search - search Hugging Face's Hub
-# programmatically to find and compare candidate embedding models,
-# rather than always defaulting to nomic-embed-text.
+# Side-quest: model_search - search Hugging Face's Hub programmatically
+# to find and compare candidate embedding models, rather than always
+# defaulting to all-MiniLM-L6-v2.
 import os
 
 from huggingface_hub import HfApi

@@ -4,3 +4,4 @@ qdrant-client
 openai
 pydantic
 huggingface_hub
+sentence-transformers
