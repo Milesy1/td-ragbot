@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>TD RagBot</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><line x1=%2210%22 y1=%2230%22 x2=%2220%22 y2=%2212%22 stroke=%22%235aa9ff%22 stroke-width=%223%22 opacity=%220.7%22/><line x1=%2220%22 y1=%2212%22 x2=%2231%22 y2=%2218%22 stroke=%22%238ee3ff%22 stroke-width=%223%22 opacity=%220.7%22/><circle cx=%2220%22 cy=%2212%22 r=%226%22 fill=%22%235aa9ff%22/><circle cx=%2210%22 cy=%2230%22 r=%224.5%22 fill=%22%238ee3ff%22/><circle cx=%2231%22 cy=%2218%22 r=%224.8%22 fill=%22%235aa9ff%22/></svg>">
+<link rel="icon" id="favicon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22><rect width=%2240%22 height=%2240%22 fill=%22%23000%22/><circle cx=%2220%22 cy=%2220%22 r=%2214%22 fill=%22none%22 stroke=%22%23ffffff%22 stroke-width=%222%22/><circle cx=%2220%22 cy=%2220%22 r=%2210%22 fill=%22none%22 stroke=%22%23ff3b30%22 stroke-width=%222%22/><circle cx=%2220%22 cy=%2220%22 r=%226%22 fill=%22none%22 stroke=%22%234ade80%22 stroke-width=%222%22/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -23,21 +23,21 @@
     --text: #edeef0;
     --text-dim: #7d8592;
     --text-dimmer: #565d68;
-    --accent: #ff7a3d;
-    --accent-glow: rgba(255, 122, 61, 0.35);
-    --accent-soft: #4a2f1e;
+    --accent: #ff3b30;
+    --accent-glow: rgba(255, 59, 48, 0.35);
+    --accent-soft: #401c19;
     --user-bubble: linear-gradient(135deg, #2c333d, #232830);
     --bot-bubble: #14171c;
     --code-bg: #23282f;
-    --code-text: #ffb37a;
+    --code-text: #f0f0f0;
     --pre-bg: #0d0f13;
     --radius: 16px;
-    --grad-1: rgba(255, 122, 61, 0.08);
-    --grad-2: rgba(120, 130, 255, 0.05);
+    --grad-1: rgba(255, 59, 48, 0.08);
+    --grad-2: rgba(74, 222, 128, 0.05);
     --scrollbar-hover: #313742;
-    --logo-1: #5aa9ff;
-    --logo-2: #8ee3ff;
-    --logo-glow: rgba(90, 169, 255, 0.45);
+    --logo-1: #ffffff;
+    --logo-2: #ff3b30;
+    --logo-glow: rgba(255, 59, 48, 0.45);
     --error: #ff5c5c;
     --error-bg: rgba(255, 92, 92, 0.1);
   }
@@ -50,20 +50,20 @@
     --text: #1a1d22;
     --text-dim: #6b7280;
     --text-dimmer: #9aa1ab;
-    --accent: #e8632a;
-    --accent-glow: rgba(232, 99, 42, 0.25);
-    --accent-soft: #ffe4d3;
+    --accent: #d92b20;
+    --accent-glow: rgba(217, 43, 32, 0.25);
+    --accent-soft: #fbdad7;
     --user-bubble: linear-gradient(135deg, #e9ebef, #dfe2e8);
     --bot-bubble: #ffffff;
     --code-bg: #e9ebef;
-    --code-text: #c1531f;
+    --code-text: #a3241a;
     --pre-bg: #ffffff;
-    --grad-1: rgba(255, 122, 61, 0.06);
-    --grad-2: rgba(120, 130, 255, 0.04);
+    --grad-1: rgba(217, 43, 32, 0.06);
+    --grad-2: rgba(74, 222, 128, 0.04);
     --scrollbar-hover: #c7ccd4;
-    --logo-1: #2f7fe0;
-    --logo-2: #4fc7e8;
-    --logo-glow: rgba(47, 127, 224, 0.3);
+    --logo-1: #1a1d22;
+    --logo-2: #d92b20;
+    --logo-glow: rgba(217, 43, 32, 0.3);
     --error: #d43c3c;
     --error-bg: rgba(212, 60, 60, 0.08);
   }
@@ -378,7 +378,7 @@
   }
   #query::placeholder { color: var(--text-dimmer); }
   #send {
-    background: linear-gradient(135deg, var(--accent), #e8632a);
+    background: linear-gradient(135deg, var(--accent), #b8251c);
     color: #fff; border: none; border-radius: 12px;
     padding: 11px 20px; font-weight: 600; font-size: 13.5px;
     cursor: pointer; transition: transform 0.12s, opacity 0.15s;
@@ -565,10 +565,10 @@ themeToggle.addEventListener("click", () => {
 // its renderer disposed when a question is asked, so no orphaned
 // animation loop keeps running against a detached canvas.
 //
-// The header logo is a real captured FRAME of this same canvas (via
-// canvas.toDataURL()), taken once after a short delay so it catches a
-// nice mid-rotation angle - not a redrawn/approximated icon, an actual
-// snapshot of the live scene.
+// The header logo AND favicon are both set from a real captured FRAME
+// of this same canvas (via canvas.toDataURL()), taken once after a
+// short delay so it catches a nice mid-rotation angle - not a redrawn
+// icon, an actual snapshot of the live scene.
 let heroAnimationId = null;
 let heroRenderer = null;
 let headerSnapshotTaken = false;
@@ -581,6 +581,7 @@ function captureHeaderSnapshot(renderer) {
     const imgEl = document.getElementById("header-logo-img");
     imgEl.src = dataUrl;
     logoEl.classList.add("has-snapshot");
+    document.getElementById("favicon").href = dataUrl;
     headerSnapshotTaken = true;
   } catch (e) {
     // Canvas capture can fail in rare cases (e.g. context lost) - the
