@@ -1,20 +1,15 @@
-# Stage 5: retrieve - semantic search against Qdrant Cloud (falls
-# back to local Qdrant if no cloud URL is set), plus hybrid retrieval
-# via keyword search + Reciprocal Rank Fusion.
-# Pipeline order: document.py -> chunk_text.py -> embed.py -> ingest.py -> retrieval.py
+# Stage 5: retrieve - dense semantic search against the named "dense" vector.
 from qdrant_client.http.models import ScoredPoint
+from qdrant_client.models import Filter
 
-from config import COLLECTION_NAME, get_qdrant_client
+from config import COLLECTION_NAME, DENSE_VECTOR_NAME, get_qdrant_client
 from embed import embed_text
 
 
-def retrieve(query: str, top_k: int = 5) -> list[ScoredPoint]:
+def retrieve(query: str, top_k: int = 5, query_filter: Filter | None = None) -> list[ScoredPoint]:
     """
     Retrieve the top_k most relevant document chunks from Qdrant
-    using semantic vector search.
-
-    The query is embedded into a vector and compared against the
-    stored document embeddings. The most similar chunks are returned.
+    using semantic vector search on the dense MiniLM embeddings.
     """
     if not query.strip():
         raise ValueError("query cannot be empty")
@@ -24,6 +19,8 @@ def retrieve(query: str, top_k: int = 5) -> list[ScoredPoint]:
         search_result = get_qdrant_client().query_points(
             collection_name=COLLECTION_NAME,
             query=query_vector,
+            using=DENSE_VECTOR_NAME,
+            query_filter=query_filter,
             limit=top_k,
         )
         return search_result.points

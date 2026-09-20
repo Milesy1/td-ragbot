@@ -27,11 +27,14 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 COLLECTION_NAME = "touchdesigner_docs"
+DENSE_VECTOR_NAME = "dense"
+SPARSE_VECTOR_NAME = "bm25"
 VECTOR_SIZE = 384  # all-MiniLM-L6-v2 output dimension
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 # ASCII-only label (no Unicode middle-dot) - avoids encoding mismatches
 # between this file's saved encoding and Render's runtime.
-EMBEDDING_MODEL_LABEL = "all-MiniLM-L6-v2 (384d)"
+EMBEDDING_MODEL_LABEL = "all-MiniLM-L6-v2 (384d) + MiniLM reranker"
 
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
@@ -40,6 +43,8 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 
 HUGGINGFACE_TOKEN = os.environ.get("HUGGINGFACE_TOKEN")
+if HUGGINGFACE_TOKEN:
+    os.environ.setdefault("HF_TOKEN", HUGGINGFACE_TOKEN)
 
 MAX_HISTORY_MESSAGES = 10
 MAX_HISTORY_ITEMS = 20
@@ -48,10 +53,51 @@ MAX_MESSAGE_CONTENT_LENGTH = 8000
 MIN_TOP_K = 1
 MAX_TOP_K = 20
 DEFAULT_TOP_K = 5
+HYBRID_CANDIDATES = 20
 
 INGEST_BATCH_SIZE = 64
-KEYWORD_SCROLL_PAGE = 256
-KEYWORD_MAX_CANDIDATES = 2000
+
+# Default retrieval stays on official/docs-like corpora. Github and the
+# interview are opted in only when the query looks like it needs them.
+DEFAULT_CORPORA = ("wiki", "book")
+GITHUB_QUERY_HINTS = (
+    "github",
+    "plugin",
+    "c++",
+    "cplusplus",
+    "unreal",
+    "touchengine",
+    "touch engine",
+    "ue5",
+    "ue4",
+    "dll",
+    "sdk",
+    "cmake",
+)
+INTERVIEW_QUERY_HINTS = ("pauric", "generative hut", "generativehut", "interview")
+
+# Cross-encoder scores below this are treated as weakly related context.
+WEAK_RERANK_THRESHOLD = 0.0
+
+CORPUS_FROM_ROOT = {
+    "wiki": "wiki",
+    "wiki_full": "wiki",
+    "introduction-book": "book",
+    "github_repos": "github",
+    "pauric_freeman": "interview",
+    "forum": "forum",
+}
+
+SKIP_NAME_SUFFIXES = (".zh-cn.md", ".zh.md", ".ja.md", ".ko.md")
+SKIP_PATH_PARTS = (
+    "/rapidjson",
+    "/node_modules/",
+    "/.git/",
+    "/vs/",
+    "/third_party/",
+    "/third-party/",
+    "/vendor/",
+)
 
 
 @lru_cache(maxsize=1)

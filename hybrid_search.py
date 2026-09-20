@@ -1,35 +1,51 @@
-# Stage 7: hybrid_search - combines semantic (retrieve) and keyword
-# (keyword_search) results via Reciprocal Rank Fusion (RRF).
-# Pipeline order: document.py -> chunk_text.py -> embed.py -> ingest.py -> retrieval.py -> keyword_search.py -> hybrid_search.py
+# Stage 7: hybrid_search - dense + BM25 in parallel, RRF fuse, then
+# cross-encoder rerank. Github/interview corpora are excluded unless
+# the query looks like it needs them.
 from concurrent.futures import ThreadPoolExecutor
 
-from retrieval import retrieve
+from qdrant_client.models import FieldCondition, Filter, MatchAny
+
+from config import (
+    DEFAULT_CORPORA,
+    GITHUB_QUERY_HINTS,
+    HYBRID_CANDIDATES,
+    INTERVIEW_QUERY_HINTS,
+)
 from keyword_search import keyword_search
+from rerank import rerank
+from retrieval import retrieve
+
+
+def corpora_for_query(query: str) -> list[str]:
+    """Wiki + book by default; github/interview only when the query asks for them."""
+    lowered = query.lower()
+    corpora = list(DEFAULT_CORPORA)
+    if any(hint in lowered for hint in GITHUB_QUERY_HINTS):
+        corpora.append("github")
+    if any(hint in lowered for hint in INTERVIEW_QUERY_HINTS):
+        corpora.append("interview")
+    return corpora
+
+
+def corpus_filter(query: str) -> Filter:
+    return Filter(
+        must=[
+            FieldCondition(
+                key="corpus",
+                match=MatchAny(any=corpora_for_query(query)),
+            )
+        ]
+    )
 
 
 def rrf_combine(semantic_results: list, keyword_results: list, k: int = 60) -> list:
     """
-    Fuse a semantic ranking and a keyword ranking into one ranked list
-    using Reciprocal Rank Fusion (RRF).
-
-    Combines by RANK POSITION rather than raw score, since semantic
-    scores (bounded cosine similarity) and keyword scores (unbounded
-    overlap counts) are on incompatible scales. A chunk ranking well
-    in both lists scores higher than one strong in only one.
-
-    semantic_results: list of Qdrant point objects (from retrieve()),
-        each with .id and .payload.
-    keyword_results: list of dicts (from keyword_search()), each with
-        "point" (a Qdrant point object) and "score".
-
-    Returns a list of (payload, rrf_score) tuples, highest score first.
+    Fuse a semantic ranking and a BM25 ranking into one ranked list
+    using Reciprocal Rank Fusion (RRF). Returns (payload, rrf_score).
     """
     if not semantic_results and not keyword_results:
         return []
 
-    # Accumulate RRF scores keyed by point id, since payloads themselves
-    # aren't hashable and different result types (point vs dict) need
-    # a common key to merge on.
     scores: dict = {}
     payloads: dict = {}
 
@@ -48,28 +64,31 @@ def rrf_combine(semantic_results: list, keyword_results: list, k: int = 60) -> l
 
 def hybrid_search(query: str, top_k: int = 5) -> list:
     """
-    Run semantic and keyword search in parallel, then fuse the results
-    via RRF into a single ranked list of the top_k most relevant chunks.
+    Dense + BM25 in parallel (filtered by corpus), RRF fuse, then
+    cross-encoder rerank to top_k. Each item is (payload, rerank_score).
     """
     if not query.strip():
         raise ValueError("query cannot be empty")
 
+    query_filter = corpus_filter(query)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        semantic_future = pool.submit(retrieve, query, 20)
-        keyword_future = pool.submit(keyword_search, query, 20)
+        semantic_future = pool.submit(retrieve, query, HYBRID_CANDIDATES, query_filter)
+        keyword_future = pool.submit(keyword_search, query, HYBRID_CANDIDATES, query_filter)
         semantic_results = semantic_future.result()
         keyword_results = keyword_future.result()
 
     combined = rrf_combine(semantic_results, keyword_results)
-    return combined[:top_k]
+    return rerank(query, combined, top_k=top_k)
 
 
 if __name__ == "__main__":
     try:
         results = hybrid_search("How do I use the network editor?", top_k=5)
         for payload, score in results:
-            print(f"RRF score: {score:.4f}")
+            print(f"Rerank score: {score:.4f}")
+            print(f"Corpus: {payload.get('corpus')}")
             print(f"Header: {payload['header_title']}")
+            print(f"Source: {payload.get('source')}")
             print(f"Content: {payload['content'][:100]}...")
             print("-" * 40)
     except Exception as e:

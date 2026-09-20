@@ -1,87 +1,103 @@
-# Stage 8: eval - basic eval harness for hybrid retrieval quality.
-# Pipeline order: ... -> hybrid_search.py -> eval.py
+# Stage 8: eval - gold-source recall@k for hybrid retrieval.
 from hybrid_search import hybrid_search
 
-# Each case: a real query, and a phrase that should appear in header,
-# source, or content of at least one of the top-k hits (recall@k).
-# Phrases are specific enough that a random wiki page should not pass.
+# Pass if any top-k hit's source or header contains a gold substring.
 TEST_CASES = [
-    ("How do I navigate the network editor?", "network editor"),
-    ("What is the OP Create Dialog used for?", "create dialog"),
-    ("How do I set preferences in TouchDesigner?", "preference"),
-    ("How does network path navigation work?", "path"),
-    ("How do I zoom in the network editor?", "zoom"),
+    {
+        "query": "How do I navigate the network editor?",
+        "gold": ["Network_Editor", "Network Editor"],
+    },
+    {
+        "query": "What is the OP Create Dialog used for?",
+        "gold": ["OP_Create_Dialog", "OP Create Dialog"],
+    },
+    {
+        "query": "How do I set preferences in TouchDesigner?",
+        "gold": ["Preferences", "Dialogs_Preferences"],
+    },
+    {
+        "query": "How does network path navigation work?",
+        "gold": ["Network_Path", "Network Path"],
+    },
+    {
+        "query": "How do I zoom in the network editor?",
+        "gold": ["Network_Editor", "Network Editor"],
+    },
 ]
 
 
-def _haystack(payload: dict) -> str:
-    return " ".join(
-        [
-            str(payload.get("header_title") or ""),
-            str(payload.get("source") or ""),
-            str(payload.get("content") or ""),
-        ]
-    ).lower()
+def _blob(payload: dict) -> str:
+    return f"{payload.get('source') or ''} {payload.get('header_title') or ''}"
 
 
-def run_eval(test_cases: list[tuple[str, str]], top_k: int = 5) -> dict:
+def _matches_gold(payload: dict, gold: list[str]) -> bool:
+    blob = _blob(payload).lower()
+    return any(needle.lower() in blob for needle in gold)
+
+
+def run_eval(test_cases: list[dict] | None = None, top_k: int = 5) -> dict:
     """
-    Run each (query, expected_phrase) test case through hybrid_search()
-    and check whether the phrase appears in ANY of the top_k results
-    (recall@k), looking at header_title, source, and content.
+    Run each gold-source test case through hybrid_search() and check
+    whether any of the top_k results matches a gold source/header.
     """
-    if not test_cases:
+    cases = test_cases or TEST_CASES
+    if not cases:
         raise ValueError("test_cases cannot be empty")
 
     passed = 0
     details = []
 
-    for query, expected in test_cases:
+    for case in cases:
+        query = case["query"]
+        gold = case["gold"]
         try:
             results = hybrid_search(query, top_k=top_k)
         except Exception as e:
-            details.append({"query": query, "passed": False, "error": str(e)})
+            details.append({"query": query, "passed": False, "error": str(e), "gold": gold})
             continue
 
         if not results:
-            details.append({"query": query, "passed": False, "error": "no results returned"})
+            details.append({"query": query, "passed": False, "error": "no results returned", "gold": gold})
             continue
 
-        needle = expected.lower()
-        matched_in_header = False
-        matched = False
-        for payload, _ in results:
-            if needle in _haystack(payload):
-                matched = True
-            header_source = f"{payload.get('header_title') or ''} {payload.get('source') or ''}".lower()
-            if needle in header_source:
-                matched_in_header = True
+        hit_at = None
+        for index, (payload, score) in enumerate(results, start=1):
+            if _matches_gold(payload, gold):
+                hit_at = index
+                break
 
+        matched = hit_at is not None
         if matched:
             passed += 1
+
+        top_payload, top_score = results[0]
         details.append(
             {
                 "query": query,
                 "passed": matched,
-                "expected": expected,
-                "matched_in_header_or_source": matched_in_header,
+                "gold": gold,
+                "hit_at": hit_at,
+                "top1_source": top_payload.get("source"),
+                "top1_header": top_payload.get("header_title"),
+                "top1_score": round(float(top_score), 4),
             }
         )
 
     return {
         "passed": passed,
-        "total": len(test_cases),
+        "total": len(cases),
         "details": details,
     }
 
 
 if __name__ == "__main__":
-    summary = run_eval(TEST_CASES)
+    summary = run_eval()
 
     for detail in summary["details"]:
         status = "PASS" if detail["passed"] else "FAIL"
-        where = " (header/source)" if detail.get("matched_in_header_or_source") else ""
-        print(f"{status}: '{detail['query']}'{where}")
+        where = f" @{detail['hit_at']}" if detail.get("hit_at") else ""
+        print(f"{status}{where}: '{detail['query']}'")
+        print(f"       top-1: {detail.get('top1_header')} ({detail.get('top1_source')}) score={detail.get('top1_score')}")
         if not detail["passed"] and "error" in detail:
             print(f"       error: {detail['error']}")
 

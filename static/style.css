@@ -434,8 +434,11 @@ header .sub { color: var(--text-dim); font-size: 12.5px; font-weight: 400; margi
   -webkit-overflow-scrolling: touch;
 }
 .about-hero {
+  position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; justify-content: center;
-  padding: 48px 28px 8px;
+  padding: 20px 28px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-soft);
 }
 .about-hero .hero-canvas-wrap { width: 200px; height: 200px; margin: 0; }
 .about-body {
@@ -504,8 +507,8 @@ header .sub { color: var(--text-dim); font-size: 12.5px; font-weight: 400; margi
 
   .source-chip { font-size: 10.5px; padding: 4px 8px; }
 
-  .about-hero { padding: 32px 14px 4px; }
-  .about-hero .hero-canvas-wrap { width: 150px; height: 150px; }
+  .about-hero { padding: 14px; }
+  .about-hero .hero-canvas-wrap { width: 120px; height: 120px; }
   .about-body { padding: 8px 18px 60px; font-size: 14px; }
   .about-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
 }

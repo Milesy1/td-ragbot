@@ -6,7 +6,14 @@ class Document:
     # trace it back to where it came from — required later for
     # citations and reranking. __init__ doesn't create the object;
     # it configures one that already exists.
-    def __init__(self, content: str, source: str, header_title: str, doc_category: str):
+    def __init__(
+        self,
+        content: str,
+        source: str,
+        header_title: str,
+        doc_category: str,
+        corpus: str = "wiki",
+    ):
         """Wraps one chunk of text with metadata for tracing it back to its source."""
         if not content or not content.strip():
             raise ValueError("content cannot be empty")
@@ -14,6 +21,7 @@ class Document:
         self.source = source
         self.header_title = header_title
         self.doc_category = doc_category
+        self.corpus = corpus
 
 
 if __name__ == "__main__":
