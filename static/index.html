@@ -117,8 +117,13 @@
     display: flex; align-items: center; justify-content: center;
     filter: drop-shadow(0 0 8px var(--logo-glow));
     flex-shrink: 0;
+    overflow: hidden;
+    background: #000;
   }
   .logo svg { width: 100%; height: 100%; }
+  .logo img { width: 100%; height: 100%; object-fit: cover; display: none; }
+  .logo.has-snapshot svg { display: none; }
+  .logo.has-snapshot img { display: block; }
   header h1 { font-size: 15.5px; font-weight: 600; margin: 0; letter-spacing: -0.1px; white-space: nowrap; }
   header .sub { color: var(--text-dim); font-size: 12.5px; font-weight: 400; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
@@ -453,7 +458,7 @@
 
 <header>
   <button class="brand" id="home-btn" title="Back to start" aria-label="Go to home, clear conversation">
-    <div class="logo" aria-hidden="true">
+    <div class="logo" id="header-logo" aria-hidden="true">
       <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
@@ -472,6 +477,7 @@
         <circle cx="14" cy="8" r="1.8" fill="url(#logoGrad)" opacity="0.6"/>
         <circle cx="24" cy="33" r="2.2" fill="url(#logoGrad)" opacity="0.7"/>
       </svg>
+      <img id="header-logo-img" alt="" />
     </div>
     <div>
       <h1>TD RagBot</h1>
@@ -558,8 +564,29 @@ themeToggle.addEventListener("click", () => {
 // Runs only while the empty state is showing - explicitly stopped and
 // its renderer disposed when a question is asked, so no orphaned
 // animation loop keeps running against a detached canvas.
+//
+// The header logo is a real captured FRAME of this same canvas (via
+// canvas.toDataURL()), taken once after a short delay so it catches a
+// nice mid-rotation angle - not a redrawn/approximated icon, an actual
+// snapshot of the live scene.
 let heroAnimationId = null;
 let heroRenderer = null;
+let headerSnapshotTaken = false;
+
+function captureHeaderSnapshot(renderer) {
+  if (headerSnapshotTaken) return;
+  try {
+    const dataUrl = renderer.domElement.toDataURL("image/png");
+    const logoEl = document.getElementById("header-logo");
+    const imgEl = document.getElementById("header-logo-img");
+    imgEl.src = dataUrl;
+    logoEl.classList.add("has-snapshot");
+    headerSnapshotTaken = true;
+  } catch (e) {
+    // Canvas capture can fail in rare cases (e.g. context lost) - the
+    // SVG fallback stays visible, which is fine.
+  }
+}
 
 function initHeroAnimation() {
   const container = document.getElementById("hero-canvas");
@@ -569,7 +596,7 @@ function initHeroAnimation() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 100);
   camera.position.set(0, 0, 3.5);
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
   renderer.setSize(size, size);
   container.innerHTML = "";
   container.appendChild(renderer.domElement);
@@ -634,10 +661,13 @@ function initHeroAnimation() {
     }
   }
 
+  let frameCount = 0;
   function animate() {
     heroAnimationId = requestAnimationFrame(animate);
     groups.forEach(g => { g.group.rotation.y += g.reverse ? -g.speed : g.speed; });
     renderer.render(scene, camera);
+    frameCount++;
+    if (frameCount === 45) captureHeaderSnapshot(renderer);
   }
   animate();
 }
