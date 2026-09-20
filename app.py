@@ -88,9 +88,18 @@ SYSTEM_PROMPT_TEMPLATE = (
 )
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
+@app.head("/", include_in_schema=False)
 def serve_ui() -> FileResponse:
-    """Serve the chat UI's index page."""
+    """
+    Serve the chat UI's index page.
+
+    Explicitly supports HEAD as well as GET - Starlette/FastAPI does
+    NOT auto-add HEAD support for a GET-only route (unlike some other
+    frameworks), and uptime monitors (e.g. UptimeRobot) send HEAD
+    requests by default, which was causing false "down" alerts (405
+    Method Not Allowed) even though the site was genuinely reachable.
+    """
     return FileResponse(STATIC_DIR / "index.html")
 
 
