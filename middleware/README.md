@@ -64,7 +64,8 @@ connect (`onConnect` = onOpen) and dispatch commands on
 `onReceiveText` (= onMessage). They never call `exec`, `save`, or `quit`.
 
 Confirm the login with `GET /sessions` — your session name, connect time, and
-duration should appear.
+duration should appear. If `/sessions` shows nothing, pulse Active off/on on
+the component's websocket1 DAT.
 
 ---
 

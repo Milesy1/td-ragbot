@@ -2,7 +2,7 @@
 
 A RAG bot for TouchDesigner documentation. Dense embeddings and a MiniLM cross-encoder run locally (`sentence-transformers`). Lexical search is BM25 sparse vectors in Qdrant (IDF on the server). Generation is streamed from Groq (`llama-3.1-8b-instant`).
 
-This repo contains two systems: the RAG chatbot (public, read-only, deployed to Render) and td-middleware (a local/private control plane with write access to TouchDesigner). Two systems, two trust levels.
+This repo contains two systems: the RAG chatbot (public, read-only, deployed to Render) and td-middleware (a local/private control plane with write access to TouchDesigner). Two systems, two trust levels. Drop `TDAgent.tox` into any TouchDesigner project to connect it to the middleware (pulse Active on the component's websocket1 DAT if it doesn't connect on load — auto-reconnect is on the v2 roadmap).
 
 ## Stack
 
