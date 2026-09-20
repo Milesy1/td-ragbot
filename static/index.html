@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css" id="hljs-light-theme" disabled>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
   :root {
     --bg: #08090b;
@@ -391,12 +392,11 @@
     color: var(--text-dim); text-align: center; margin: auto;
     font-size: 14px; max-width: 420px; line-height: 1.7; padding: 0 20px;
   }
-  .empty-state .big-logo {
-    width: 64px; height: 64px; margin: 0 auto 18px;
-    display: flex; align-items: center; justify-content: center;
-    filter: drop-shadow(0 0 18px var(--logo-glow));
+  .hero-canvas-wrap {
+    width: 260px; height: 260px; margin: 0 auto 18px;
+    border-radius: 16px; overflow: hidden; background: #000;
   }
-  .empty-state .big-logo svg { width: 100%; height: 100%; }
+  .hero-canvas-wrap canvas { display: block; width: 100% !important; height: 100% !important; }
   .empty-state h2 { color: var(--text); font-size: 18px; margin: 0 0 8px; font-weight: 600; }
   .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 20px; }
   .suggestion-chip {
@@ -435,7 +435,7 @@
     .bubble { padding: 11px 13px; font-size: 14px; }
 
     .empty-state { max-width: 320px; padding: 0 10px; }
-    .empty-state .big-logo { width: 48px; height: 48px; }
+    .hero-canvas-wrap { width: 180px; height: 180px; }
     .empty-state h2 { font-size: 16px; }
     .suggestions { gap: 6px; }
     .suggestion-chip { font-size: 12px; padding: 7px 11px; }
@@ -499,26 +499,7 @@
 
 <div id="chat" role="log" aria-live="polite" aria-label="Conversation">
   <div class="empty-state" id="empty-state">
-    <div class="big-logo" aria-hidden="true">
-      <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="logoGradBig" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="var(--logo-1)"/>
-            <stop offset="100%" stop-color="var(--logo-2)"/>
-          </linearGradient>
-        </defs>
-        <line x1="10" y1="30" x2="20" y2="12" stroke="url(#logoGradBig)" stroke-width="1.6" opacity="0.7"/>
-        <line x1="20" y1="12" x2="31" y2="18" stroke="url(#logoGradBig)" stroke-width="1.6" opacity="0.7"/>
-        <line x1="20" y1="12" x2="14" y2="8" stroke="url(#logoGradBig)" stroke-width="1.6" opacity="0.5"/>
-        <line x1="10" y1="30" x2="24" y2="33" stroke="url(#logoGradBig)" stroke-width="1.6" opacity="0.5"/>
-        <line x1="31" y1="18" x2="24" y2="33" stroke="url(#logoGradBig)" stroke-width="1.6" opacity="0.6"/>
-        <circle cx="20" cy="12" r="4" fill="url(#logoGradBig)"/>
-        <circle cx="10" cy="30" r="3" fill="url(#logoGradBig)" opacity="0.85"/>
-        <circle cx="31" cy="18" r="3.2" fill="url(#logoGradBig)" opacity="0.9"/>
-        <circle cx="14" cy="8" r="1.8" fill="url(#logoGradBig)" opacity="0.6"/>
-        <circle cx="24" cy="33" r="2.2" fill="url(#logoGradBig)" opacity="0.7"/>
-      </svg>
-    </div>
+    <div class="hero-canvas-wrap" id="hero-canvas" aria-hidden="true"></div>
     <h2>Ask about TouchDesigner</h2>
     Hybrid retrieval over the real docs, grounded generation via Groq. Ask from anywhere.
     <div class="suggestions">
@@ -571,6 +552,106 @@ themeToggle.addEventListener("click", () => {
   applyTheme(next);
   try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* ignore */ }
 });
+
+// --- Hero animation (real Three.js port of the rotating cylinder-line
+// scene from mileswaite.net's homepage hero, minus the React wrapper).
+// Runs only while the empty state is showing - explicitly stopped and
+// its renderer disposed when a question is asked, so no orphaned
+// animation loop keeps running against a detached canvas.
+let heroAnimationId = null;
+let heroRenderer = null;
+
+function initHeroAnimation() {
+  const container = document.getElementById("hero-canvas");
+  if (!container || typeof THREE === "undefined") return;
+
+  const size = container.clientWidth || 260;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 100);
+  camera.position.set(0, 0, 3.5);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setSize(size, size);
+  container.innerHTML = "";
+  container.appendChild(renderer.domElement);
+  heroRenderer = renderer;
+
+  scene.add(new THREE.AmbientLight(0xffffff, 1));
+  const dir = new THREE.DirectionalLight(0xffffff, 1);
+  dir.position.set(5, 5, 5);
+  scene.add(dir);
+  const point = new THREE.PointLight(0xff00ff, 0.5);
+  point.position.set(-5, 0, 3);
+  scene.add(point);
+
+  const container3d = new THREE.Group();
+  container3d.rotation.x = 0.5;
+  container3d.rotation.z = 0.2;
+  scene.add(container3d);
+
+  function randomSeed(row, col, offset) {
+    const seed = row * 100 + col + (offset || 0);
+    return (Math.sin(seed) * 10000) % 1;
+  }
+
+  const columns = 7, rows = 5;
+  const radii = [1.2, 1, 0.8];
+  const colors = [0xffffff, 0xff0000, 0x00ff00];
+  const offsets = [2000, 0, 1000];
+  const reverses = [false, false, true];
+  const squareHeight = 0.55, heightSpacing = 0.65;
+  const anglePerSquare = (Math.PI * 2) / columns;
+  const linesPerSquare = 7;
+  const groups = [];
+
+  for (let r = 0; r < radii.length; r++) {
+    for (let row = 0; row < rows; row++) {
+      const yPos = (row - (rows - 1) / 2) * heightSpacing;
+      for (let col = 0; col < columns; col++) {
+        if (randomSeed(row, col, offsets[r]) < 0.4) continue;
+        const startAngle = (col / columns) * Math.PI * 2 - anglePerSquare / 2;
+        const endAngle = startAngle + anglePerSquare * 0.9;
+        const isFast = (col % 2 === 1);
+        const speed = isFast ? 0.05625 : 0.0225;
+
+        for (let line = 0; line < linesPerSquare; line++) {
+          const lineYOffset = (line - (linesPerSquare - 1) / 2) * (squareHeight / linesPerSquare);
+          const lineY = yPos + lineYOffset;
+          const points = [];
+          const segments = 20;
+          for (let i = 0; i <= segments; i++) {
+            const angle = startAngle + (endAngle - startAngle) * (i / segments);
+            points.push(new THREE.Vector3(Math.cos(angle) * radii[r], lineY, Math.sin(angle) * radii[r]));
+          }
+          const geometry = new THREE.BufferGeometry().setFromPoints(points);
+          const material = new THREE.LineBasicMaterial({ color: colors[r] });
+          const line3d = new THREE.Line(geometry, material);
+          const group = new THREE.Group();
+          group.add(line3d);
+          container3d.add(group);
+          groups.push({ group, speed, reverse: reverses[r] });
+        }
+      }
+    }
+  }
+
+  function animate() {
+    heroAnimationId = requestAnimationFrame(animate);
+    groups.forEach(g => { g.group.rotation.y += g.reverse ? -g.speed : g.speed; });
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+function stopHeroAnimation() {
+  if (heroAnimationId !== null) {
+    cancelAnimationFrame(heroAnimationId);
+    heroAnimationId = null;
+  }
+  if (heroRenderer) {
+    heroRenderer.dispose();
+    heroRenderer = null;
+  }
+}
 
 // --- Corpus stats ticker (real data from Qdrant via /api/stats) ---
 // The track is duplicated (group-1 + group-2, identical content) and
@@ -641,26 +722,7 @@ function updateClearBtnState() {
 }
 
 const EMPTY_STATE_HTML = `
-  <div class="big-logo" aria-hidden="true">
-    <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="logoGradBig2" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="var(--logo-1)"/>
-          <stop offset="100%" stop-color="var(--logo-2)"/>
-        </linearGradient>
-      </defs>
-      <line x1="10" y1="30" x2="20" y2="12" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.7"/>
-      <line x1="20" y1="12" x2="31" y2="18" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.7"/>
-      <line x1="20" y1="12" x2="14" y2="8" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.5"/>
-      <line x1="10" y1="30" x2="24" y2="33" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.5"/>
-      <line x1="31" y1="18" x2="24" y2="33" stroke="url(#logoGradBig2)" stroke-width="1.6" opacity="0.6"/>
-      <circle cx="20" cy="12" r="4" fill="url(#logoGradBig2)"/>
-      <circle cx="10" cy="30" r="3" fill="url(#logoGradBig2)" opacity="0.85"/>
-      <circle cx="31" cy="18" r="3.2" fill="url(#logoGradBig2)" opacity="0.9"/>
-      <circle cx="14" cy="8" r="1.8" fill="url(#logoGradBig2)" opacity="0.6"/>
-      <circle cx="24" cy="33" r="2.2" fill="url(#logoGradBig2)" opacity="0.7"/>
-    </svg>
-  </div>
+  <div class="hero-canvas-wrap" id="hero-canvas" aria-hidden="true"></div>
   <h2>Ask about TouchDesigner</h2>
   Hybrid retrieval over the real docs, grounded generation via Groq. Ask from anywhere.
   <div class="suggestions">
@@ -677,11 +739,15 @@ function bindSuggestionChips() {
 }
 
 function clearEmptyState() {
-  if (emptyState && emptyState.parentNode) emptyState.remove();
+  if (emptyState && emptyState.parentNode) {
+    stopHeroAnimation();
+    emptyState.remove();
+  }
   emptyState = null;
 }
 
 function goHome() {
+  stopHeroAnimation();
   chat.innerHTML = "";
   conversationHistory = [];
   updateClearBtnState();
@@ -692,6 +758,7 @@ function goHome() {
   chat.appendChild(div);
   emptyState = div;
   bindSuggestionChips();
+  initHeroAnimation();
   queryInput.value = "";
   queryInput.focus();
 }
@@ -857,6 +924,7 @@ inputForm.addEventListener("submit", (e) => {
   sendQuery();
 });
 bindSuggestionChips();
+initHeroAnimation();
 
 // --- Keyboard shortcuts ---
 document.addEventListener("keydown", (e) => {
