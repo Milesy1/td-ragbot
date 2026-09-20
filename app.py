@@ -29,6 +29,7 @@ from config import (
     MAX_QUERY_LENGTH,
     MAX_TOP_K,
     MIN_TOP_K,
+    WEAK_RERANK_THRESHOLD,
     get_qdrant_client,
 )
 from hybrid_search import hybrid_search
@@ -53,6 +54,18 @@ SYSTEM_PROMPT = (
     "Context:\n"
 )
 
+REWRITE_PROMPT = (
+    "Rewrite the user's latest question as a standalone TouchDesigner "
+    "documentation search query. Resolve pronouns and references using "
+    "the conversation. Return ONLY the search query text."
+)
+
+WEAK_RETRIEVAL_MESSAGE = (
+    "I couldn't find reliable TouchDesigner documentation for that. "
+    "Try naming the operator, dialog, or feature (for example Preferences, "
+    "Network Editor, OP Create Dialog)."
+)
+
 
 class Message(BaseModel):
     role: Literal["user", "assistant"]
@@ -69,9 +82,32 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
-def build_context_and_sources(query: str, top_k: int) -> tuple[str, list[dict]]:
-    """Run hybrid_search and build both the LLM context string and the
-    structured source list the frontend displays."""
+def rewrite_search_query(query: str, history: list[Message]) -> str:
+    """Turn a follow-up into a standalone search query using recent history."""
+    if not history:
+        return query
+    messages = [{"role": "system", "content": REWRITE_PROMPT}]
+    messages.extend(
+        {"role": item.role, "content": item.content}
+        for item in history[-MAX_HISTORY_MESSAGES:]
+    )
+    messages.append({"role": "user", "content": query})
+    try:
+        response = llm_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages,
+            max_tokens=80,
+            temperature=0,
+        )
+        rewritten = (response.choices[0].message.content or "").strip().strip('"')
+        return rewritten or query
+    except Exception as e:
+        print(f"[rewrite_search_query] {e}")
+        return query
+
+
+def build_context_and_sources(query: str, top_k: int) -> tuple[str, list[dict], bool]:
+    """Run hybrid_search and build LLM context, sources, and a weak-hit flag."""
     results = hybrid_search(query, top_k=top_k)
 
     context = "\n\n---\n\n".join(
@@ -83,19 +119,21 @@ def build_context_and_sources(query: str, top_k: int) -> tuple[str, list[dict]]:
         {
             "header_title": payload["header_title"],
             "doc_category": payload["doc_category"],
+            "corpus": payload.get("corpus"),
             "source": payload["source"],
-            "score": round(score, 4),
+            "score": round(float(score), 4),
         }
         for payload, score in results
     ]
-
-    return context, sources
+    weak = (not sources) or (float(results[0][1]) < WEAK_RERANK_THRESHOLD)
+    return context, sources, weak
 
 
 def _empty_stats() -> dict:
     return {
         "chunk_count": None,
         "categories": [],
+        "corpora": [],
         "source_file_count": None,
         "source_file_count_is_estimate": False,
         "status": None,
@@ -146,23 +184,28 @@ def get_stats() -> dict:
         # exact, once the corpus is larger than the sample size.
         categories = set()
         sources = set()
+        corpora = set()
         points, _ = client.scroll(
             collection_name=COLLECTION_NAME,
             limit=2000,
-            with_payload=["doc_category", "source"],
+            with_payload=["doc_category", "source", "corpus"],
         )
         for point in points:
             payload = point.payload or {}
             cat = payload.get("doc_category")
             src = payload.get("source")
+            corpus = payload.get("corpus")
             if cat:
                 categories.add(cat)
             if src:
                 sources.add(src)
+            if corpus:
+                corpora.add(corpus)
 
         return {
             "chunk_count": chunk_count,
             "categories": sorted(categories),
+            "corpora": sorted(corpora),
             "source_file_count": len(sources),
             "source_file_count_is_estimate": chunk_count is not None and chunk_count > len(points),
             "status": status,
@@ -185,14 +228,15 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     """
     Stream a RAG answer token-by-token as Server-Sent Events.
 
-    Retrieval uses only the latest question (request.query) - what to
-    search for doesn't depend on prior turns. Generation uses the full
-    conversation history (request.history) so follow-up questions that
-    refer back to earlier turns ("what about for a COMP?") are understood.
+    Retrieval uses a standalone search query: the latest question, or a
+    Groq-rewritten query when conversation history is present so follow-ups
+    ("what about for a COMP?") search the right docs. Generation still
+    uses the full conversation history.
 
     First event carries the retrieved sources (so the UI can show them
     immediately), followed by a stream of text-delta events as the LLM
-    generates, then a final "done" event.
+    generates, then a final "done" event. Weak retrieval (low rerank
+    score) skips generation and says so plainly instead of guessing.
 
     Blocking HF/Qdrant/Groq calls run in a worker thread so one slow
     request does not stall the event loop.
@@ -205,8 +249,13 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 
     async def event_stream():
         try:
-            context, sources = await asyncio.to_thread(
-                build_context_and_sources, request.query, request.top_k
+            search_query = request.query
+            if request.history:
+                search_query = await asyncio.to_thread(
+                    rewrite_search_query, request.query, request.history
+                )
+            context, sources, weak = await asyncio.to_thread(
+                build_context_and_sources, search_query, request.top_k
             )
         except Exception as e:
             print(f"[chat_stream] retrieval error: {e}\n{traceback.format_exc()}")
@@ -215,9 +264,8 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
 
         yield _sse({"type": "sources", "sources": sources})
 
-        if not sources:
-            msg = "I couldn't find anything relevant in the TouchDesigner docs for that."
-            yield _sse({"type": "delta", "text": msg})
+        if not sources or weak:
+            yield _sse({"type": "delta", "text": WEAK_RETRIEVAL_MESSAGE})
             yield _sse({"type": "done"})
             return
 
