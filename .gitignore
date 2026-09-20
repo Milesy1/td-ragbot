@@ -7,3 +7,5 @@ pytest-cache-files-*/
 .env.*
 !.env.example
 audit.jsonl
+
+notes/private/
