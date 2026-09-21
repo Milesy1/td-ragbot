@@ -28,6 +28,7 @@ ALLOWED_ACTIONS: Final[frozenset[str]] = frozenset(
         "connect",
         "list_ops",
         "delete_op",
+        "get_op_info",
         # "write_script",  # later phase — do not implement now
     }
 )
@@ -102,6 +103,13 @@ class DeleteOpCommand(CommandBase):
     path: str
 
 
+class GetOpInfoCommand(CommandBase):
+    """Read-only introspection of the operator at ``path``."""
+
+    action: Literal["get_op_info"]
+    path: str
+
+
 Command = Annotated[
     Union[
         CreateOpCommand,
@@ -109,6 +117,7 @@ Command = Annotated[
         ConnectCommand,
         ListOpsCommand,
         DeleteOpCommand,
+        GetOpInfoCommand,
     ],
     BeforeValidator(_ensure_allowed_action),
     Field(discriminator="action"),

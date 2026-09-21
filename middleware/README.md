@@ -16,6 +16,7 @@ Actions (allowlist — enforced in **both** this service and the TD callbacks).
 | `connect` | `from` (not `from_path`), `to_path`, `input_index` (default 0) |
 | `list_ops` | `path` |
 | `delete_op` | `path` |
+| `get_op_info` | `path` (read-only introspection) |
 
 Every reply is JSON:
 
@@ -54,6 +55,29 @@ when more than one TD is connected; with a single session it may be omitted
 
 ```json
 {"action":"delete_op","session":"...","path":"..."}
+```
+
+```json
+{"action":"get_op_info","session":"...","path":"/project1/fx/level1"}
+```
+
+Example `get_op_info` reply:
+
+```json
+{
+  "ok": true,
+  "result": {
+    "name": "level1",
+    "optype": "levelTOP",
+    "pars": {"opacity": 1.0, "invert": 0},
+    "cook_ms": 0.12,
+    "inputs": ["moviein1"],
+    "outputs": ["out1"],
+    "children": 0
+  },
+  "op_errors": [],
+  "debug": {}
+}
 ```
 
 - `connect` uses `from`, **not** `from_path`. `to_path` is correct.

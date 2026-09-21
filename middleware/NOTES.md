@@ -26,3 +26,5 @@ All five actions exercised end-to-end: create_op, list_ops, set_par, connect,
 delete_op — with structured debug (errors, cook_ms) flowing back per reply.
 - Reusability acceptance test passed 2026-09-20: brand-new .toe + dragged
   TDAgent.tox + Active pulse → session registered, all five actions available.
+
+get_op_info added for agent read-back verification (item 6 prerequisite); read-only by design.
