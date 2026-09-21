@@ -9,19 +9,17 @@
    Client mode = fill Network Address (e.g. 127.0.0.1) + port. Never assume the mode.
 4. TD connects at path "/" — middleware must accept any WS path (catch-all route),
    not only /ws.
-5. Contract drift: middleware Pydantic schema names fields from_path/to_path;
-   executor must accept both from/to and from_path/to_path. Long-term: generate
-   the TD-side dispatcher from the Pydantic models so drift is impossible.
+5. Contract drift: the JSON `connect` field is `from`, not `from_path`; `to_path` is correct.
+   TD executor should be generated from the Pydantic schema to prevent contract drift.
 6. TD's textport (Alt+T) is the debugging surface: callback exceptions appear
    there, not in the middleware logs. Check both sides.
-7. WebSocket DAT does not reliably dial on its own. On .toe load the connection
-   attempt may fire before things are ready and silently fail; client-mode DATs
-   do not auto-retry, and the .tox may save with Active off. Evidence: fresh-file
-   acceptance test 2026-09-20 — component registered only after manually pulsing
-   Active off/on. REQUIRED for v2: an internal reconnect watchdog (Timer CHOP or
-   frame script inside TDAgent) that checks socket state every ~2s and re-pulses
-   Active when disconnected. Until v2 ships, installation instructions must say:
-   "if /sessions shows nothing, pulse Active off/on on the component's websocket1."
+
+## Gotcha #7 — Component does not dial on load
+WebSocket DAT in client mode does not auto-retry after a failed or absent connection at startup. The register handshake never fires, and TD gives no error — the failure is silent.
+- v1 workaround: pulse the `Active` parameter if `GET /sessions` is empty.
+- v2 fix (planned): Timer CHOP watchdog checking connection state every ~2s, re-pulsing `Active` on disconnect. Add a `Session` custom param so the middleware can distinguish multiple TD instances.
+
+(2026-09-20: .tox may also save with Active off; fresh-file acceptance test registered only after pulsing Active off/on.)
 
 ## Verified working
 All five actions exercised end-to-end: create_op, list_ops, set_par, connect,

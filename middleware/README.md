@@ -13,7 +13,7 @@ Actions (allowlist — enforced in **both** this service and the TD callbacks).
 |---|---|
 | `create_op` | `parent_path`, `op_type`, `name` |
 | `set_par` | `path`, `par`, `value` (str / int / float / bool) |
-| `connect` | `from` (JSON; Python `from_path`), `to_path`, `input_index` (default 0) |
+| `connect` | `from` (not `from_path`), `to_path`, `input_index` (default 0) |
 | `list_ops` | `path` |
 | `delete_op` | `path` |
 
@@ -29,6 +29,36 @@ present and contains whatever TouchDesigner returns:
 - `op_errors` (list, optional)
 - `cook_ms` (number, optional)
 - `network_errors` (list, optional, capped at 10)
+
+## Command API
+
+`POST /cmd` JSON bodies. All fields required unless noted. `session` is required
+when more than one TD is connected; with a single session it may be omitted
+(see status codes below).
+
+```json
+{"action":"create_op","session":"...","parent_path":"...","op_type":"...","name":"..."}
+```
+
+```json
+{"action":"set_par","session":"...","path":"...","par":"...","value":"..."}
+```
+
+```json
+{"action":"connect","session":"...","from":"...","to_path":"..."}
+```
+
+```json
+{"action":"list_ops","session":"...","path":"..."}
+```
+
+```json
+{"action":"delete_op","session":"...","path":"..."}
+```
+
+- `connect` uses `from`, **not** `from_path`. `to_path` is correct.
+- `list_ops.path` is required (omitting it returns 422 today).
+- `set_par.value` may be a string, int, float, or bool.
 
 ---
 
