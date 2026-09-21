@@ -13,11 +13,19 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 os.environ["PAIRING_TOKEN"] = "test-token"
 os.environ.setdefault(
     "AUDIT_LOG_PATH",
     str(Path(tempfile.gettempdir()) / "td-agent-middleware-audit.jsonl"),
 )
+
+
+@pytest.fixture
+def cmd_headers() -> dict[str, str]:
+    """X-Pairing-Token for POST /cmd. Value matches PAIRING_TOKEN in tests."""
+    return {"X-Pairing-Token": os.environ["PAIRING_TOKEN"]}
 
 _MIDDLEWARE = Path(__file__).resolve().parent.parent
 _path = str(_MIDDLEWARE)

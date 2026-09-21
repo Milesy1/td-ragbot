@@ -58,10 +58,11 @@ def test_register_correct_token_listed_in_sessions() -> None:
     assert manager.get("studio") is None
 
 
-def test_cmd_disconnected_returns_503() -> None:
+def test_cmd_disconnected_returns_503(cmd_headers: dict[str, str]) -> None:
     client = TestClient(app)
     response = client.post(
         "/cmd",
+        headers=cmd_headers,
         json={"action": "list_ops", "path": "/project1"},
     )
     assert response.status_code == 503
@@ -70,10 +71,11 @@ def test_cmd_disconnected_returns_503() -> None:
     assert "error" in body
 
 
-def test_cmd_named_missing_session_returns_503() -> None:
+def test_cmd_named_missing_session_returns_503(cmd_headers: dict[str, str]) -> None:
     client = TestClient(app)
     response = client.post(
         "/cmd",
+        headers=cmd_headers,
         json={
             "action": "list_ops",
             "path": "/project1",
@@ -84,23 +86,60 @@ def test_cmd_named_missing_session_returns_503() -> None:
     assert response.json()["ok"] is False
 
 
-def test_off_allowlist_post_cmd_returns_422() -> None:
+def test_off_allowlist_post_cmd_returns_422(cmd_headers: dict[str, str]) -> None:
     client = TestClient(app)
     response = client.post(
         "/cmd",
+        headers=cmd_headers,
         json={"action": "write_script", "path": "/project1", "code": "print(1)"},
     )
     assert response.status_code == 422
     assert "write_script" not in ALLOWED_ACTIONS
 
 
-def test_exec_post_cmd_returns_422() -> None:
+def test_exec_post_cmd_returns_422(cmd_headers: dict[str, str]) -> None:
     client = TestClient(app)
     response = client.post(
         "/cmd",
+        headers=cmd_headers,
         json={"action": "exec", "code": "1 + 1"},
     )
     assert response.status_code == 422
+
+
+def test_cmd_missing_pairing_token_returns_401() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/cmd",
+        json={"action": "list_ops", "path": "/project1"},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "invalid pairing token"}
+
+
+def test_cmd_wrong_pairing_token_returns_401() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/cmd",
+        headers={"X-Pairing-Token": "wrong-token"},
+        json={"action": "list_ops", "path": "/project1"},
+    )
+    assert response.status_code == 401
+    assert response.json() == {"detail": "invalid pairing token"}
+
+
+def test_cmd_correct_pairing_token_passes_through(cmd_headers: dict[str, str]) -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/cmd",
+        headers=cmd_headers,
+        json={"action": "list_ops", "path": "/project1"},
+    )
+    assert response.status_code != 401
+    assert response.status_code == 503
+    body = response.json()
+    assert body["ok"] is False
+    assert "error" in body
 
 
 def test_sessions_empty_when_none_connected() -> None:

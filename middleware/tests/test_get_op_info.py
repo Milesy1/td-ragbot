@@ -56,14 +56,14 @@ class FakeOp:
         return self._pars
 
 
-def test_get_op_info_existing_op() -> None:
+def test_get_op_info_existing_op(cmd_headers: dict[str, str]) -> None:
     cmd = ADAPTER.validate_python(GET_OP_INFO_PAYLOAD)
     assert cmd.action == "get_op_info"
     assert cmd.action in ALLOWED_ACTIONS
     assert cmd.path == "/project1/fx/level1"
 
     client = TestClient(app)
-    response = client.post("/cmd", json=GET_OP_INFO_PAYLOAD)
+    response = client.post("/cmd", headers=cmd_headers, json=GET_OP_INFO_PAYLOAD)
     assert response.status_code == 503
     assert response.json()["ok"] is False
 
@@ -119,3 +119,22 @@ def test_get_op_info_unevaluable_par() -> None:
     assert pars["opacity"] == 1.0
     assert pars["broken"].startswith("<unevaluable: ")
     assert "no cook" in pars["broken"]
+
+
+def test_get_op_info_redacts_token_par() -> None:
+    secret = "real-pairing-token"
+    target = FakeOp(
+        pars=[
+            FakePar("opacity", 1.0),
+            FakePar("Token", secret),
+        ]
+    )
+    reply = handle_get_op_info(
+        dict(GET_OP_INFO_PAYLOAD),
+        op_lookup=lambda path: target,
+    )
+    assert reply["ok"] is True
+    pars = reply["result"]["pars"]
+    assert pars["opacity"] == 1.0
+    assert pars["Token"] == "<redacted>"
+    assert secret not in pars.values()

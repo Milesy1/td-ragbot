@@ -33,9 +33,15 @@ present and contains whatever TouchDesigner returns:
 
 ## Command API
 
+All `/cmd` requests require header `X-Pairing-Token: <PAIRING_TOKEN>`.
+
 `POST /cmd` JSON bodies. All fields required unless noted. `session` is required
 when more than one TD is connected; with a single session it may be omitted
 (see status codes below).
+
+```powershell
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/cmd' -Method POST -Headers @{ 'X-Pairing-Token' = $env:PAIRING_TOKEN } -ContentType 'application/json' -Body '{"action":"list_ops","path":"/project1"}'
+```
 
 ```json
 {"action":"create_op","session":"...","parent_path":"...","op_type":"...","name":"..."}
@@ -214,6 +220,7 @@ session is removed.
 ### `POST /cmd` status codes
 
 - `200` — TD reply, returned as-is
+- `401` — missing or invalid `X-Pairing-Token`
 - `422` — body failed validation (including off-allowlist actions)
 - `409` — multiple sessions connected and no `session` field, or a command
   is already in flight for that session

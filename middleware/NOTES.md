@@ -28,3 +28,6 @@ delete_op — with structured debug (errors, cook_ms) flowing back per reply.
   TDAgent.tox + Active pulse → session registered, all five actions available.
 
 get_op_info added for agent read-back verification (item 6 prerequisite); read-only by design.
+
+## Security posture
+`POST /cmd` requires header `X-Pairing-Token` matching `PAIRING_TOKEN` (WebSocket register already used the same token).

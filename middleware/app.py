@@ -8,6 +8,7 @@ against ALLOWED_ACTIONS, then forwards the JSON to the named TD session.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import threading
@@ -17,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -149,6 +150,25 @@ def get_audit() -> AuditLog:
     return _audit
 
 
+def require_pairing_token(
+    x_pairing_token: str = Header(default=""),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    """Require header X-Pairing-Token to match Settings.pairing_token.
+
+    Missing and empty headers are mismatches. compare_digest failures
+    become 401 rather than 500. The token is never placed on Command.
+    """
+    provided = str(x_pairing_token)
+    expected = str(settings.pairing_token)
+    try:
+        matched = hmac.compare_digest(provided, expected)
+    except Exception:
+        raise HTTPException(status_code=401, detail="invalid pairing token")
+    if not provided or not matched:
+        raise HTTPException(status_code=401, detail="invalid pairing token")
+
+
 def _configure_logging() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(
@@ -235,7 +255,7 @@ async def list_sessions() -> dict[str, list[dict[str, Any]]]:
     return {"sessions": rows}
 
 
-@app.post("/cmd")
+@app.post("/cmd", dependencies=[Depends(require_pairing_token)])
 async def post_cmd(
     command: Command,
     settings: Settings = Depends(get_settings),
