@@ -50,9 +50,6 @@
   <div class="header-right">
     <a class="nav-link" href="/about">About</a>
     <div class="status"><span class="pulse" aria-hidden="true"></span><span>gpt-oss-20b · cloud</span></div>
-    <button class="clear-btn" id="clear-btn" title="Clear conversation" aria-label="Clear conversation" disabled>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
-    </button>
     <button id="theme-toggle" title="Toggle light/dark theme" aria-label="Toggle light and dark theme" aria-pressed="false">
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
@@ -159,16 +156,11 @@ let emptyState = document.getElementById("empty-state");
 const queryInput = document.getElementById("query");
 const sendBtn = document.getElementById("send");
 const inputForm = document.getElementById("input-row");
-const clearBtn = document.getElementById("clear-btn");
 
 // In-memory conversation history (multi-turn). No database - lives only
 // in this browser tab, sent in full (capped server-side) with each
 // request so the model can understand follow-up questions.
 let conversationHistory = [];
-
-function updateClearBtnState() {
-  clearBtn.disabled = conversationHistory.length === 0;
-}
 
 const EMPTY_STATE_HTML = `
   <div class="hero-canvas-wrap" id="hero-canvas" aria-hidden="true"></div>
@@ -199,7 +191,6 @@ function goHome() {
   stopHeroAnimation();
   chat.innerHTML = "";
   conversationHistory = [];
-  updateClearBtnState();
   const div = document.createElement("div");
   div.className = "empty-state";
   div.id = "empty-state";
@@ -213,9 +204,6 @@ function goHome() {
 }
 
 document.getElementById("home-btn").addEventListener("click", goHome);
-clearBtn.addEventListener("click", () => {
-  if (!clearBtn.disabled) goHome();
-});
 
 function addUserMessage(text) {
   clearEmptyState();
@@ -344,8 +332,7 @@ async function sendQuery(text) {
     if (accumulated) {
       conversationHistory.push({ role: "user", content: query });
       conversationHistory.push({ role: "assistant", content: accumulated });
-      updateClearBtnState();
-    }
+        }
   } catch (err) {
     if (!gotAnyResponse) {
       showRetryableError(userMsg, botMsg, query);
