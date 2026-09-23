@@ -7,6 +7,7 @@
 import asyncio
 import json
 import os
+import sys
 import time
 import traceback
 from pathlib import Path
@@ -24,16 +25,22 @@ from config import (
     EMBEDDING_MODEL_LABEL,
     GROQ_API_KEY,
     GROQ_MODEL,
+    LOCAL_EMBEDDINGS,
     MAX_HISTORY_ITEMS,
     MAX_HISTORY_MESSAGES,
     MAX_MESSAGE_CONTENT_LENGTH,
     MAX_QUERY_LENGTH,
     MAX_TOP_K,
     MIN_TOP_K,
+    RERANK_ENABLED,
     WEAK_RERANK_THRESHOLD,
     get_qdrant_client,
 )
 from hybrid_search import hybrid_search
+
+# Render pipes stdout; without line buffering, request logs sit in the
+# buffer and are lost if the process is killed (e.g. OOM).
+sys.stdout.reconfigure(line_buffering=True)
 
 app = FastAPI(title="TD RagBot")
 
@@ -96,11 +103,11 @@ def _sse(payload: dict) -> str:
 @app.on_event("startup")
 def warm_models() -> None:
     """
-    Load the cross-encoder reranker once at server boot instead of lazily
-    on whichever user's request happens to be first.
+    Load the embedder and cross-encoder reranker once at server boot
+    instead of lazily on whichever user's request happens to be first.
 
     ROOT CAUSE this fixes: rerank._reranker() is an @lru_cache singleton
-    that loads sentence_transformers.CrossEncoder on first call. Measured
+    that loaded sentence_transformers.CrossEncoder on first call. Measured
     locally: ~37s to load, ~30ms per predict() once loaded. Because the
     lazy load previously happened inside the request path with no
     logging and no timeout, the very first chat request after any process
@@ -110,7 +117,21 @@ def warm_models() -> None:
     as "the bot is dead." Paying this cost at startup, before the process
     accepts traffic, converts a silent per-request stall into an
     ordinary, visible deploy-time delay.
+
+    Both models now run on fastembed/ONNX: sentence_transformers pulled in
+    torch, whose import alone (~500MB) OOM-killed Render's 512MB tier.
     """
+    if LOCAL_EMBEDDINGS:
+        t0 = time.monotonic()
+        try:
+            from embed import _local_model
+            _local_model()
+            print(f"[startup] embedder warmed in {time.monotonic() - t0:.2f}s", flush=True)
+        except Exception as e:
+            print(f"[startup] embedder warmup failed (will lazy-load on first request): {e}", flush=True)
+    if not RERANK_ENABLED:
+        print("[startup] RERANK_ENABLED=0 - skipping reranker warmup (RRF order)", flush=True)
+        return
     t0 = time.monotonic()
     print("[startup] warming reranker model...", flush=True)
     try:

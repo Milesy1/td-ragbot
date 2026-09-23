@@ -1,5 +1,5 @@
 # Stage 3: embed - turns text into a 384-d vector using all-MiniLM-L6-v2.
-# Prefers a local SentenceTransformer (fast, no per-chunk API, works
+# Prefers a local fastembed/ONNX model (fast, no per-chunk API, works
 # offline). Falls back to Hugging Face Inference if the local model
 # cannot be loaded (e.g. a slim deploy without torch).
 # Pipeline order: document.py -> chunk_text.py -> embed.py -> ingest.py -> retrieval.py
@@ -9,7 +9,7 @@ from functools import lru_cache
 from huggingface_hub import InferenceClient
 from huggingface_hub.errors import HfHubHTTPError, InferenceTimeoutError, OverloadedError
 
-from config import EMBEDDING_MODEL, HUGGINGFACE_TOKEN
+from config import EMBEDDING_MODEL, HUGGINGFACE_TOKEN, LOCAL_EMBEDDINGS
 
 MAX_RETRIES = 4
 BASE_DELAY_SECONDS = 2
@@ -18,8 +18,10 @@ RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 
 @lru_cache(maxsize=1)
 def _local_model():
-    from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(EMBEDDING_MODEL, token=HUGGINGFACE_TOKEN)
+    # ONNX port of the same model; vectors match sentence-transformers
+    # (cosine 1.0), so the existing Qdrant index stays valid.
+    from fastembed import TextEmbedding
+    return TextEmbedding(EMBEDDING_MODEL)
 
 
 @lru_cache(maxsize=1)
@@ -54,7 +56,7 @@ def _vector_from_result(result) -> list[float]:
 
 
 def _embed_local(text: str) -> list[float]:
-    vector = _local_model().encode(text, normalize_embeddings=True)
+    vector = next(iter(_local_model().embed([text])))
     return _vector_from_result(vector)
 
 
@@ -87,6 +89,8 @@ def embed_text(text: str) -> list[float]:
     if not text.strip():
         raise ValueError("text cannot be empty")
 
+    if not LOCAL_EMBEDDINGS:
+        return _embed_hf(text)
     try:
         return _embed_local(text)
     except Exception as local_error:

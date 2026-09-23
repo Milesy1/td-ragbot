@@ -3,13 +3,15 @@
 # list the LLM actually sees.
 from functools import lru_cache
 
-from config import HUGGINGFACE_TOKEN, RERANKER_MODEL
+from config import RERANK_ENABLED, RERANKER_MODEL
 
 
 @lru_cache(maxsize=1)
 def _reranker():
-    from sentence_transformers import CrossEncoder
-    return CrossEncoder(RERANKER_MODEL, token=HUGGINGFACE_TOKEN)
+    # fastembed ONNX port; raw logits match the sentence-transformers
+    # CrossEncoder, so WEAK_RERANK_THRESHOLD keeps its meaning.
+    from fastembed.rerank.cross_encoder import TextCrossEncoder
+    return TextCrossEncoder(RERANKER_MODEL)
 
 
 def rerank(query: str, results: list, top_k: int) -> list[tuple[dict, float]]:
@@ -21,12 +23,16 @@ def rerank(query: str, results: list, top_k: int) -> list[tuple[dict, float]]:
     """
     if not results:
         return []
+    if not RERANK_ENABLED:
+        return [(payload, float(score)) for payload, score in results[:top_k]]
     try:
-        pairs = [
-            (query, f"{payload.get('header_title') or ''}\n{payload.get('content') or ''}")
+        documents = [
+            f"{payload.get('header_title') or ''}\n{payload.get('content') or ''}"
             for payload, _ in results
         ]
-        scores = _reranker().predict(pairs)
+        # ONNX Runtime's arena keeps the peak batch allocation for the life
+        # of the process; batch_size=1 keeps that peak ~1/20th the default.
+        scores = list(_reranker().rerank(query, documents, batch_size=1))
         ranked = sorted(
             zip(results, scores),
             key=lambda item: float(item[1]),

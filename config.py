@@ -31,7 +31,7 @@ DENSE_VECTOR_NAME = "dense"
 SPARSE_VECTOR_NAME = "bm25"
 VECTOR_SIZE = 384  # all-MiniLM-L6-v2 output dimension
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+RERANKER_MODEL = "Xenova/ms-marco-MiniLM-L-6-v2"
 # ASCII-only label (no Unicode middle-dot) - avoids encoding mismatches
 # between this file's saved encoding and Render's runtime.
 EMBEDDING_MODEL_LABEL = "all-MiniLM-L6-v2 (384d) + MiniLM reranker"
@@ -41,6 +41,12 @@ QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
+
+# Local models run on fastembed/ONNX (no torch; torch's import alone
+# exceeded Render's 512MB tier). Escape hatches: LOCAL_EMBEDDINGS=0 embeds
+# via HF Inference, RERANK_ENABLED=0 keeps RRF order (no cross-encoder).
+RERANK_ENABLED = os.environ.get("RERANK_ENABLED", "1") != "0"
+LOCAL_EMBEDDINGS = os.environ.get("LOCAL_EMBEDDINGS", "1") != "0"
 
 HUGGINGFACE_TOKEN = os.environ.get("HUGGINGFACE_TOKEN")
 if HUGGINGFACE_TOKEN:
