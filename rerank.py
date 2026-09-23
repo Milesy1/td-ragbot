@@ -3,7 +3,7 @@
 # list the LLM actually sees.
 from functools import lru_cache
 
-from config import RERANK_ENABLED, RERANKER_MODEL
+from config import ONNX_THREADS, RERANK_CANDIDATES, RERANK_ENABLED, RERANKER_MODEL
 
 
 @lru_cache(maxsize=1)
@@ -11,7 +11,7 @@ def _reranker():
     # fastembed ONNX port; raw logits match the sentence-transformers
     # CrossEncoder, so WEAK_RERANK_THRESHOLD keeps its meaning.
     from fastembed.rerank.cross_encoder import TextCrossEncoder
-    return TextCrossEncoder(RERANKER_MODEL)
+    return TextCrossEncoder(RERANKER_MODEL, threads=ONNX_THREADS)
 
 
 def rerank(query: str, results: list, top_k: int) -> list[tuple[dict, float]]:
@@ -25,6 +25,7 @@ def rerank(query: str, results: list, top_k: int) -> list[tuple[dict, float]]:
         return []
     if not RERANK_ENABLED:
         return [(payload, float(score)) for payload, score in results[:top_k]]
+    results = results[:RERANK_CANDIDATES]
     try:
         documents = [
             f"{payload.get('header_title') or ''}\n{payload.get('content') or ''}"

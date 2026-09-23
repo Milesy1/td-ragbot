@@ -60,6 +60,12 @@ MIN_TOP_K = 1
 MAX_TOP_K = 20
 DEFAULT_TOP_K = 5
 HYBRID_CANDIDATES = 20
+# Render free tier is a 0.1 CPU quota, and ONNX Runtime defaults to one
+# thread per host core (spin-waiting eats the quota). Single-threaded
+# inference over at most RERANK_CANDIDATES pairs keeps rerank to a few
+# seconds there instead of blowing RETRIEVAL_TIMEOUT_SECONDS.
+ONNX_THREADS = 1
+RERANK_CANDIDATES = 20
 
 INGEST_BATCH_SIZE = 64
 

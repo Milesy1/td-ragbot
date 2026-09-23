@@ -9,7 +9,7 @@ from functools import lru_cache
 from huggingface_hub import InferenceClient
 from huggingface_hub.errors import HfHubHTTPError, InferenceTimeoutError, OverloadedError
 
-from config import EMBEDDING_MODEL, HUGGINGFACE_TOKEN, LOCAL_EMBEDDINGS
+from config import EMBEDDING_MODEL, HUGGINGFACE_TOKEN, LOCAL_EMBEDDINGS, ONNX_THREADS
 
 MAX_RETRIES = 4
 BASE_DELAY_SECONDS = 2
@@ -21,7 +21,7 @@ def _local_model():
     # ONNX port of the same model; vectors match sentence-transformers
     # (cosine 1.0), so the existing Qdrant index stays valid.
     from fastembed import TextEmbedding
-    return TextEmbedding(EMBEDDING_MODEL)
+    return TextEmbedding(EMBEDDING_MODEL, threads=ONNX_THREADS)
 
 
 @lru_cache(maxsize=1)
