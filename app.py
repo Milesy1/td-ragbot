@@ -1,5 +1,5 @@
 # Stage 9: app - FastAPI backend serving the chat UI. Wires
-# hybrid_search() (retrieval) + Groq-hosted llama-3.1 (generation,
+# hybrid_search() (retrieval) + Groq-hosted openai/gpt-oss-20b (generation,
 # streamed) together into a real RAG endpoint, deployable on Render
 # since Groq is a hosted API, not a local model server. Supports
 # multi-turn conversation - the client sends the full message history,

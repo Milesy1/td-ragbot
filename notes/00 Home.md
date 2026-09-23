@@ -3,7 +3,7 @@
 An agentic AI system that builds TouchDesigner networks from natural language.
 
 ## Components
-1. **TD RagBot** (td.mileswaite.net) — RAG Q&A over TD docs. Hybrid retrieval (`all-MiniLM-L6-v2` embeddings + BM25, RRF fusion), Qdrant Cloud, Groq `llama-3.1-8b-instant` generation.
+1. **TD RagBot** (td.mileswaite.net) — RAG Q&A over TD docs. Hybrid retrieval (`all-MiniLM-L6-v2` embeddings + BM25, RRF fusion), Qdrant Cloud, Groq `openai/gpt-oss-20b` generation.
 2. **td-middleware** — FastAPI chokepoint, WebSocket server, 5-action allowlist (`create_op`, `set_par`, `connect`, `list_ops`, `delete_op`), Pydantic validation, JSONL audit log, 25 pytest tests.
 3. **TDAgent.tox** — reusable TD component (WebSocket DAT client mode + callbacks, register handshake with pairing token).
 
